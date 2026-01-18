@@ -1,0 +1,7 @@
+{
+  "name": "FreeNow - Vagas Temporárias",
+  "description": "Uma plataforma mobile-first para empresários contratarem freelancers por diária de forma rápida e segura.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
