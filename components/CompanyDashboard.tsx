@@ -229,14 +229,16 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     }
   };
 
-  const handleViewProfile = async (workerId: string) => {
+  // AJUSTE AQUI: Adicionado parâmetro 'workerNameFromApp' para garantir o nome
+  const handleViewProfile = async (workerId: string, workerNameFromApp?: string) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', workerId).single();
       if (error) throw error;
       if (data) {
         setSelectedCandidate({
           id: data.id,
-          name: data.name || 'Nome não informado',
+          // Usa o nome do banco OU o nome da lista de candidaturas se o banco falhar
+          name: data.name || workerNameFromApp || 'Nome não informado',
           email: data.email || '',
           role: UserRole.WORKER,
           age: data.age,
@@ -305,7 +307,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                   </div>
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => handleViewProfile(app.worker_id)}
+                      // AJUSTE AQUI: Passando o worker_name da aplicação para a função
+                      onClick={() => handleViewProfile(app.worker_id, app.worker_name)}
                       className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition"
                     >
                       Ver Perfil
