@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-JS';
+import { createClient } from '@supabase/supabase-js';
 
 // Essas são as credenciais do seu projeto FreeNow no Supabase
 const supabaseUrl = 'https://jhdwssnwtbgyfslnmwxa.supabase.co';
