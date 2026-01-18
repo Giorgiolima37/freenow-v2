@@ -19,6 +19,36 @@ const App: React.FC = () => {
     fetchJobs();
   }, [currentUser]);
 
+  // --- NOVO: Notificação de Som para Trabalhadores ---
+  useEffect(() => {
+    // Só ativa o listener se houver um usuário logado e ele for TRABALHADOR
+    if (currentUser && currentUser.role === UserRole.WORKER) {
+      const channel = supabase
+        .channel('jobs-notification')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'jobs' },
+          (payload) => {
+            console.log('Nova vaga detectada!', payload);
+            
+            // 1. Toca o som (certifique-se que alert.mp3 está na pasta public)
+            const audio = new Audio('/alert.mp3');
+            audio.play().catch((error) => console.log('O navegador bloqueou o som automático:', error));
+
+            // 2. Atualiza a lista de vagas na hora
+            fetchJobs();
+          }
+        )
+        .subscribe();
+
+      // Limpeza ao sair ou mudar de usuário
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [currentUser]);
+  // ---------------------------------------------------
+
   async function fetchJobs() {
     try {
       // 1. TENTATIVA SEGURA: Busca simples primeiro (para garantir que as vagas não sumam)
