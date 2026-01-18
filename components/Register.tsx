@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { BUSINESS_TYPES } from '../constants';
+// import { BUSINESS_TYPES } from '../constants'; <--- REMOVI A IMPORTAÇÃO
 import { supabase } from '../lib/supabase';
 
 interface RegisterProps {
@@ -13,16 +13,47 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  
+  // Novos estados para empresa
   const [businessName, setBusinessName] = useState('');
+  const [cnpj, setCnpj] = useState(''); 
+  
+  // --- LISTA DE TIPOS DE NEGÓCIO (ATUALIZADA) ---
+  const BUSINESS_TYPES = [
+    'Restaurante',
+    'Lanchonete',
+    'Padaria',        // Adicionado
+    'Transportadora', // Adicionado
+    'Bar',
+    'Mercado',
+    'Evento',
+    'Outro'
+  ];
+
   const [businessType, setBusinessType] = useState(BUSINESS_TYPES[0]);
   const [loading, setLoading] = useState(false);
+
+  // --- FUNÇÃO PARA PRIMEIRA LETRA MAIÚSCULA (Title Case) ---
+  const toTitleCase = (str: string) => {
+    return str.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // --- FUNÇÃO DE MÁSCARA DO CNPJ ---
+  const handleCnpjChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 14) value = value.slice(0, 14);
+    value = value.replace(/^(\d{2})(\d)/, '$1.$2');
+    value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+    value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
+    value = value.replace(/(\d{4})(\d)/, '$1-$2');
+    setCnpj(value);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // 1. Criar usuário na Autenticação do Supabase
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -31,22 +62,21 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
       if (authError) throw authError;
 
       if (authData.user) {
-        // 2. Salvar dados na tabela 'profiles' incluindo campos de Empresa
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             {
               id: authData.user.id,
               full_name: name,
-              user_type: role, // Enviará 'Trabalhador' ou 'Empresa'
+              user_type: role,
               business_name: role === UserRole.COMPANY ? businessName : null,
               business_type: role === UserRole.COMPANY ? businessType : null,
+              cnpj: role === UserRole.COMPANY ? cnpj : null,
             },
           ]);
 
         if (profileError) throw profileError;
 
-        // 3. Objeto para o estado local do App
         const newUser: User = {
           id: authData.user.id,
           name,
@@ -54,6 +84,8 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
           role,
           businessName: role === UserRole.COMPANY ? businessName : undefined,
           businessType: role === UserRole.COMPANY ? businessType : undefined,
+          // @ts-ignore
+          cnpj: role === UserRole.COMPANY ? cnpj : undefined,
         };
 
         alert('Cadastro realizado com sucesso!');
@@ -98,7 +130,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
             required
             className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 outline-none"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setName(toTitleCase(e.target.value))}
           />
         </div>
 
@@ -111,9 +143,23 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
                 required
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 outline-none"
                 value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
+                onChange={(e) => setBusinessName(toTitleCase(e.target.value))}
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
+              <input 
+                type="text" 
+                required
+                maxLength={18}
+                placeholder="00.000.000/0000-00"
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 outline-none"
+                value={cnpj}
+                onChange={handleCnpjChange}
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Negócio</label>
               <select 
