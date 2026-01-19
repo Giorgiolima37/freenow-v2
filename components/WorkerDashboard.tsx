@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Job, ApplicationStatus } from '../types';
-import html2canvas from 'html2canvas'; // Import html2canvas
+import html2canvas from 'html2canvas'; // Certifique-se de ter instalado: npm install html2canvas
 
 interface WorkerDashboardProps {
   user: User;
@@ -67,25 +67,28 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     return str.replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
-  // --- NOVA FUNÇÃO PARA CORRIGIR A DATA ---
-  // Transforma "2026-01-19" direto para "19/01/2026" ignorando fuso horário
+  // --- FUNÇÃO PARA CORRIGIR A DATA ---
   const formatDateDisplay = (dateString: string) => {
     if (!dateString) return '';
-    const parts = dateString.split('-'); // [2026, 01, 19]
+    const parts = dateString.split('-'); 
     if (parts.length !== 3) return dateString;
-    return `${parts[2]}/${parts[1]}/${parts[0]}`; // 19/01/2026
+    return `${parts[2]}/${parts[1]}/${parts[0]}`; 
   };
 
-  // --- FUNÇÃO PARA SALVAR COMO IMAGEM ---
+  // --- FUNÇÃO PARA SALVAR COMO IMAGEM (MANUAL) ---
   const handleSaveAsImage = async (jobId: string) => {
     const element = document.getElementById(`job-card-${jobId}`);
     if (element) {
-      const canvas = await html2canvas(element);
-      const data = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = data;
-      link.download = `vaga-${jobId}.png`;
-      link.click();
+      try {
+        const canvas = await html2canvas(element, { backgroundColor: '#ffffff', scale: 2 });
+        const data = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = data;
+        link.download = `vaga-${jobId}.png`;
+        link.click();
+      } catch (err) {
+        console.error("Erro ao salvar imagem:", err);
+      }
     }
   };
 
@@ -219,6 +222,26 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
   };
 
   const handleApply = async (job: Job) => {
+    // --- 1. TIRA O PRINT AUTOMÁTICO DO COMPROVANTE ---
+    const element = document.getElementById('job-detail-content');
+    if (element) {
+      try {
+        const canvas = await html2canvas(element, { 
+          backgroundColor: '#ffffff', // Garante fundo branco
+          scale: 2 // Melhor qualidade
+        });
+        const data = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = data;
+        link.download = `Comprovante-${job.role.replace(/\s+/g, '-')}.png`;
+        link.click();
+      } catch (printError) {
+        console.error("Erro ao gerar comprovante:", printError);
+        // Não paramos o fluxo se o print falhar, apenas logamos
+      }
+    }
+
+    // --- 2. SEGUE COM A LÓGICA DE ACEITE NO BANCO ---
     try {
       const { error } = await supabase
         .from('applications') 
@@ -236,7 +259,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
           throw error;
         }
       } else {
-        alert('Sucesso! A empresa foi notificada da sua candidatura.');
+        alert('Sucesso! Comprovante salvo na galeria.');
         setJobStatuses(prev => ({ ...prev, [job.id]: 'SOLICITADO' }));
         setSelectedJob(null);
       }
@@ -346,7 +369,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
               return (
                 <div 
                   key={job.id}
-                  id={`job-card-${job.id}`} // ID único para o print 
+                  id={`job-card-${job.id}`} 
                   onClick={() => handleOpenDetails(job)}
                   className={`
                     p-5 rounded-2xl shadow-sm hover:shadow-md transition cursor-pointer active:scale-95 border-2
@@ -372,10 +395,10 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <span className={`font-bold ${isHired ? 'text-green-700' : 'text-green-600'}`}>
                         R$ {job.dailyRate.toFixed(2)}
                       </span>
-                        {/* Ícone de Câmera */}
+                        {/* Ícone de Câmera Manual */}
                         <button 
                           onClick={(e) => {
-                            e.stopPropagation(); // Evita que o clique abra os detalhes da vaga
+                            e.stopPropagation();
                             handleSaveAsImage(job.id);
                           }}
                           className="mt-2 text-gray-500 hover:text-gray-700"
@@ -386,9 +409,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                     </div>
                   </div>
                   
-                  {/* --- ÁREA: SEXO E CNH (NO CARD DA VAGA) --- */}
                   <div className="flex items-center gap-2 mb-2">
-                    {/* Exibe SEXO se não for Indiferente */}
                     {(job as any).gender && (job as any).gender !== 'Indiferente' && (
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border
                           ${(job as any).gender === 'Masculino' 
@@ -400,14 +421,12 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                         </span>
                     )}
 
-                    {/* Exibe CNH se não for 'Não exigido' */}
                     {(job as any).cnh && (job as any).cnh !== 'Não exigido' && (
                         <span className="text-[10px] font-bold bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md flex items-center gap-1 border border-orange-100">
                           <i className="fa-solid fa-id-card"></i> CNH: {(job as any).cnh}
                         </span>
                     )}
                   </div>
-                  {/* -------------------------------------------------------- */}
                   
                   <div className="mb-3 mt-2">
                       <p className="text-sm font-medium text-gray-800 flex items-center gap-2">
@@ -436,7 +455,6 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <i className="fa-regular fa-clock mr-1"></i> {job.startTime} - {job.endTime}
                     </span>
                     <span>
-                      {/* --- CORREÇÃO DE DATA AQUI --- */}
                       <i className="fa-regular fa-calendar mr-1"></i> {formatDateDisplay(job.date)}
                     </span>
                   </div>
@@ -570,7 +588,10 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
             <h2 className="text-lg font-bold text-gray-800">Detalhes da Vaga</h2>
           </div>
 
-          <div className="p-6 max-w-lg mx-auto w-full flex-1 flex flex-col justify-between">
+          <div 
+             id="job-detail-content" // --- ID ADICIONADO PARA O PRINT FUNCIONAR ---
+             className="p-6 max-w-lg mx-auto w-full flex-1 flex flex-col justify-between"
+          >
              <div>
                 {jobStatuses[selectedJob.id] === 'ACEITO' ? (
                   <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block uppercase">
@@ -606,7 +627,6 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <p className="text-xs text-gray-400 uppercase font-bold mb-1">Data</p>
-                      {/* --- CORREÇÃO DE DATA AQUI TAMBÉM --- */}
                       <p className="text-gray-800 text-xl font-bold">{formatDateDisplay(selectedJob.date)}</p>
                     </div>
                 </div>
