@@ -15,8 +15,10 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
   const [endTime, setEndTime] = useState('');
   const [dailyRate, setDailyRate] = useState('');
   
-  // --- NOVO ESTADO PARA O SEXO ---
   const [gender, setGender] = useState('Indiferente');
+  
+  // --- NOVO ESTADO PARA CNH ---
+  const [cnh, setCnh] = useState('Não exigido');
 
   const [benefits, setBenefits] = useState<string[]>([]);
   const [description, setDescription] = useState('');
@@ -25,12 +27,14 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
   const [neighborhood, setNeighborhood] = useState('');
 
   const AVAILABLE_BENEFITS = ['VT', 'Alimentação no Local'];
+  const CNH_OPTIONS = ['Não exigido', 'A', 'B', 'AB', 'C', 'D', 'E'];
 
   const DAILY_RATES = [];
   for (let i = 60; i <= 3000; i += 10) {
     DAILY_RATES.push(i);
   }
 
+  // Função de formatação (mantida conforme seu padrão)
   const toTitleCase = (str: string) => {
     return str
       .toLowerCase()
@@ -65,8 +69,9 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
         benefits: benefits,
         city: city,
         neighborhood: neighborhood,
-        // Envia o sexo para o banco (certifique-se de ter a coluna 'gender' ou 'sexo' no Supabase)
-        gender: gender 
+        gender: gender,
+        // Envia a CNH para o banco (certifique-se de ter a coluna 'cnh' na tabela jobs)
+        cnh: cnh 
       };
 
       const { data, error } = await supabase
@@ -92,8 +97,8 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           status: data.status as JobStatus,
           city: data.city,
           neighborhood: data.neighborhood,
-          // Se sua interface Job tiver o campo gender, adicione aqui:
-          // gender: data.gender
+          // gender: data.gender,
+          // cnh: data.cnh
         };
         
         onCreate(formattedJob);
@@ -130,7 +135,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           />
         </div>
 
-        {/* DATA (LINHA INTEIRA) */}
+        {/* DATA */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">Data</label>
           <input 
@@ -143,7 +148,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           />
         </div>
 
-        {/* VALOR DIÁRIA E SEXO (LADO A LADO) */}
+        {/* VALOR DIÁRIA E SEXO */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Valor Diária (R$)</label>
@@ -162,7 +167,6 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
             </select>
           </div>
 
-          {/* --- CAMPO SEXO --- */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Sexo</label>
             <select 
@@ -177,6 +181,21 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           </div>
         </div>
 
+        {/* --- NOVO CAMPO: CNH --- */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Habilitação (CNH)</label>
+          <select 
+            className="w-full p-4 rounded-xl bg-gray-50 border border-gray-200 focus:ring-2 focus:ring-green-500 outline-none appearance-none"
+            value={cnh}
+            onChange={(e) => setCnh(e.target.value)}
+          >
+            {CNH_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* INÍCIO E TÉRMINO */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Início</label>
@@ -200,6 +219,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           </div>
         </div>
 
+        {/* MUNICÍPIO E BAIRRO */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Município</label>
@@ -223,6 +243,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           </div>
         </div>
 
+        {/* BENEFÍCIOS */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-3">Benefícios</label>
           <div className="flex gap-4">
@@ -249,6 +270,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           </div>
         </div>
 
+        {/* DESCRIÇÃO */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">Descrição Livre</label>
           <textarea 

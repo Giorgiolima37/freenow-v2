@@ -73,6 +73,15 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       .slice(0, 18);
   };
 
+  // --- NOVA FUNÇÃO AUXILIAR PARA CORRIGIR A DATA ---
+  // Transforma "2026-01-18" direto para "18/01/2026" sem fuso horário
+  const formatDateDisplay = (dateString: string) => {
+    if (!dateString) return '';
+    const parts = dateString.split('-'); // [2026, 01, 18]
+    if (parts.length !== 3) return dateString;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`; // 18/01/2026
+  };
+
   useEffect(() => {
     setLocalJobs(initialJobs);
   }, [initialJobs]);
@@ -186,11 +195,44 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setLocalJobs(curr => curr.filter(j => j.id !== jobId));
       onDeleteJob(jobId);
       setSelectedJob(null);
-      alert('Vaga encerrada e removida com sucesso.');
+      // alert('Vaga encerrada e removida com sucesso.'); // Comentado para não spamar alert na limpeza automática
     } catch (error: any) {
-      alert('Erro ao encerrar vaga: ' + error.message);
+      console.error('Erro ao encerrar vaga: ' + error.message);
     }
   };
+
+  // --- FUNÇÃO DE LIMPEZA AUTOMÁTICA ---
+  useEffect(() => {
+    const cleanExpiredJobs = async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); 
+
+      for (const job of localJobs) {
+        // Exemplo: job.date = "2026-01-18"
+        const jobDateParts = job.date.split('-');
+        const jobDate = new Date(
+          Number(jobDateParts[0]), 
+          Number(jobDateParts[1]) - 1, 
+          Number(jobDateParts[2])
+        );
+
+        // Data limite = Data da Vaga + 1 dia (Ex: dia 19)
+        const expiryDate = new Date(jobDate);
+        expiryDate.setDate(expiryDate.getDate() + 1);
+
+        // Se Hoje (19) >= Data Limite (19), apaga.
+        if (today >= expiryDate) {
+          console.log(`Limpando vaga vencida: ${job.role} do dia ${job.date}`);
+          await handleTerminateJob(job.id);
+        }
+      }
+    };
+
+    if (localJobs.length > 0) {
+      cleanExpiredJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localJobs]); 
 
   const handleOpenJobDetails = (job: Job) => {
     setSelectedJob(job);
@@ -229,7 +271,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     }
   };
 
-  // AJUSTE AQUI: Adicionado parâmetro 'workerNameFromApp' para garantir o nome
   const handleViewProfile = async (workerId: string, workerNameFromApp?: string) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', workerId).single();
@@ -237,7 +278,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       if (data) {
         setSelectedCandidate({
           id: data.id,
-          // Usa o nome do banco OU o nome da lista de candidaturas se o banco falhar
           name: data.name || workerNameFromApp || 'Nome não informado',
           email: data.email || '',
           role: UserRole.WORKER,
@@ -307,7 +347,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                   </div>
                   <div className="flex gap-2">
                     <button 
-                      // AJUSTE AQUI: Passando o worker_name da aplicação para a função
                       onClick={() => handleViewProfile(app.worker_id, app.worker_name)}
                       className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition"
                     >
@@ -349,7 +388,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                 </div>
                 <div className="flex items-center text-xs text-gray-500 mt-1 mb-3">
                   <i className="fa-regular fa-calendar mr-1"></i>
-                  {new Date(job.date).toLocaleDateString('pt-BR')} • {job.startTime} às {job.endTime}
+                  {/* CORREÇÃO AQUI: Usa a formatação direta */}
+                  {formatDateDisplay(job.date)} • {job.startTime} às {job.endTime}
                 </div>
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-green-600 font-bold">R$ {job.dailyRate.toFixed(2)}</span>
@@ -403,7 +443,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <p className="text-xs text-gray-400 uppercase font-bold mb-1">Data</p>
-                      <p className="text-gray-800 text-xl font-bold">{new Date(selectedJob.date).toLocaleDateString('pt-BR')}</p>
+                      {/* CORREÇÃO AQUI TAMBÉM */}
+                      <p className="text-gray-800 text-xl font-bold">{formatDateDisplay(selectedJob.date)}</p>
                     </div>
                 </div>
 
@@ -464,7 +505,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         </div>
       )}
 
-      {/* --- MODAL EDIT BIO (ATUALIZADO) --- */}
+      {/* --- MODAL EDIT BIO --- */}
       {showCompanyBio && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in relative overflow-hidden">

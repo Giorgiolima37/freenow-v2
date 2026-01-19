@@ -30,7 +30,6 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
 
   // --- ESTADOS DO PERFIL DO TRABALHADOR ---
   const [showProfileModal, setShowProfileModal] = useState(false);
-  // Adicionei photoUrl aqui para atualizar na hora que fizer o upload
   const [workerProfile, setWorkerProfile] = useState({
     age: '',
     municipio: '',
@@ -39,10 +38,9 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     phone: '',
     cpf: '',
     hasTransport: false,
-    photoUrl: user.photoUrl || '' // Inicia com a foto atual
+    photoUrl: user.photoUrl || '' 
   });
   
-  // Estado para controlar o carregamento da imagem
   const [uploading, setUploading] = useState(false);
 
   // --- HELPER: LISTAS ÚNICAS ---
@@ -64,9 +62,17 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
       .replace(/(-\d{2})\d+?$/, '$1'); 
   };
 
-  // --- TITLE CASE ---
   const toTitleCase = (str: string) => {
     return str.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  // --- NOVA FUNÇÃO PARA CORRIGIR A DATA ---
+  // Transforma "2026-01-19" direto para "19/01/2026" ignorando fuso horário
+  const formatDateDisplay = (dateString: string) => {
+    if (!dateString) return '';
+    const parts = dateString.split('-'); // [2026, 01, 19]
+    if (parts.length !== 3) return dateString;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`; // 19/01/2026
   };
 
   useEffect(() => {
@@ -142,34 +148,22 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     fetchMyProfile();
   }, [jobs, user.id]);
 
-  // --- NOVA FUNÇÃO DE UPLOAD ---
   const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true);
-
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('Selecione uma imagem.');
-      }
+      if (!event.target.files || event.target.files.length === 0) throw new Error('Selecione uma imagem.');
 
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // 1. Upload para o Storage
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      // 2. Pega URL Pública
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
       
-      // 3. Atualiza estado local imediatamente (preview)
       setWorkerProfile(prev => ({ ...prev, photoUrl: data.publicUrl }));
-
-      // 4. Salva URL no banco imediatamente (opcional, ou deixa pro botão salvar)
       await supabase.from('profiles').update({ photo_url: data.publicUrl }).eq('id', user.id);
 
     } catch (error: any) {
@@ -192,7 +186,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
           phone: workerProfile.phone,
           cpf: workerProfile.cpf,
           has_transport: workerProfile.hasTransport,
-          photo_url: workerProfile.photoUrl // Garante que a foto é salva
+          photo_url: workerProfile.photoUrl
         })
         .eq('id', user.id);
 
@@ -363,14 +357,31 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <span className={`font-bold ${isHired ? 'text-green-700' : 'text-green-600'}`}>
                         R$ {job.dailyRate.toFixed(2)}
                       </span>
-                      
-                      {(job as any).gender && (
-                        <span className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200">
-                          {(job as any).gender}
-                        </span>
-                      )}
                     </div>
                   </div>
+                  
+                  {/* --- ÁREA: SEXO E CNH (NO CARD DA VAGA) --- */}
+                  <div className="flex items-center gap-2 mb-2">
+                    {/* Exibe SEXO se não for Indiferente */}
+                    {(job as any).gender && (job as any).gender !== 'Indiferente' && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border
+                          ${(job as any).gender === 'Masculino' 
+                            ? 'bg-blue-50 text-blue-600 border-blue-100' 
+                            : 'bg-pink-50 text-pink-600 border-pink-100'}
+                        `}>
+                          <i className={`fa-solid ${(job as any).gender === 'Masculino' ? 'fa-mars' : 'fa-venus'}`}></i>
+                          {(job as any).gender}
+                        </span>
+                    )}
+
+                    {/* Exibe CNH se não for 'Não exigido' */}
+                    {(job as any).cnh && (job as any).cnh !== 'Não exigido' && (
+                        <span className="text-[10px] font-bold bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md flex items-center gap-1 border border-orange-100">
+                          <i className="fa-solid fa-id-card"></i> CNH: {(job as any).cnh}
+                        </span>
+                    )}
+                  </div>
+                  {/* -------------------------------------------------------- */}
                   
                   <div className="mb-3 mt-2">
                       <p className="text-sm font-medium text-gray-800 flex items-center gap-2">
@@ -399,7 +410,8 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <i className="fa-regular fa-clock mr-1"></i> {job.startTime} - {job.endTime}
                     </span>
                     <span>
-                      <i className="fa-regular fa-calendar mr-1"></i> {new Date(job.date).toLocaleDateString('pt-BR')}
+                      {/* --- CORREÇÃO DE DATA AQUI --- */}
+                      <i className="fa-regular fa-calendar mr-1"></i> {formatDateDisplay(job.date)}
                     </span>
                   </div>
 
@@ -420,7 +432,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
         )}
       </div>
 
-      {/* --- MODAL DE PERFIL (AGORA COM UPLOAD E CÂMERA) --- */}
+      {/* --- MODAL DE PERFIL --- */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
@@ -436,8 +448,6 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
 
             <div className="p-6 overflow-y-auto flex-1">
                <div className="flex flex-col items-center mb-6">
-                 
-                 {/* --- ÁREA DA FOTO COM UPLOAD --- */}
                  <div className="relative group">
                     <label 
                       htmlFor="dashboard-avatar-upload"
@@ -450,14 +460,11 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                         ) : (
                           <i className="fa-solid fa-user text-4xl"></i>
                         )}
-                        
-                        {/* Overlay escuro ao passar o mouse */}
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center rounded-full">
                            <span className="text-white text-xs font-bold opacity-0 group-hover:opacity-100">Alterar</span>
                         </div>
                     </label>
 
-                    {/* Botão Câmera no cantinho */}
                     <label 
                        htmlFor="dashboard-avatar-upload"
                        className="absolute bottom-2 right-0 bg-green-600 text-white w-8 h-8 rounded-full border-2 border-white flex items-center justify-center shadow-md cursor-pointer hover:bg-green-700 transition"
@@ -474,60 +481,29 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                        className="hidden"
                     />
                  </div>
-                 {/* ---------------------------------- */}
-
                  <h2 className="text-xl font-bold text-gray-800">{user.name}</h2>
-                 
-                 <div className="flex gap-1 mt-1 text-yellow-400">
-                    <i className="fa-solid fa-star"></i>
-                    <i className="fa-solid fa-star"></i>
-                    <i className="fa-solid fa-star"></i>
-                    <i className="fa-regular fa-star"></i>
-                    <i className="fa-regular fa-star"></i>
-                 </div>
-                 <p className="text-xs text-gray-400 mt-1">Sua nota: 3.0</p>
                </div>
-
+               
                <div className="space-y-4">
                  <div>
                    <label className="text-xs font-bold text-gray-500 uppercase">Sua Idade</label>
-                   <input 
-                     type="number" 
-                     value={workerProfile.age}
-                     onChange={(e) => setWorkerProfile({...workerProfile, age: e.target.value})}
-                     className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500"
-                   />
+                   <input type="number" value={workerProfile.age} onChange={(e) => setWorkerProfile({...workerProfile, age: e.target.value})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
                  </div>
 
                  <div className="grid grid-cols-2 gap-4">
                    <div>
                      <label className="text-xs font-bold text-gray-500 uppercase">Município</label>
-                     <input 
-                       type="text" 
-                       value={workerProfile.municipio}
-                       onChange={(e) => setWorkerProfile({...workerProfile, municipio: toTitleCase(e.target.value)})}
-                       className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500"
-                     />
+                     <input type="text" value={workerProfile.municipio} onChange={(e) => setWorkerProfile({...workerProfile, municipio: toTitleCase(e.target.value)})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
                    </div>
                    <div>
                      <label className="text-xs font-bold text-gray-500 uppercase">Bairro</label>
-                     <input 
-                       type="text" 
-                       value={workerProfile.bairro}
-                       onChange={(e) => setWorkerProfile({...workerProfile, bairro: toTitleCase(e.target.value)})}
-                       className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500"
-                     />
+                     <input type="text" value={workerProfile.bairro} onChange={(e) => setWorkerProfile({...workerProfile, bairro: toTitleCase(e.target.value)})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
                    </div>
                  </div>
 
                  <div>
                    <label className="text-xs font-bold text-gray-500 uppercase">Endereço (Rua e Número)</label>
-                   <input 
-                     type="text" 
-                     value={workerProfile.address}
-                     onChange={(e) => setWorkerProfile({...workerProfile, address: toTitleCase(e.target.value)})}
-                     className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500"
-                   />
+                   <input type="text" value={workerProfile.address} onChange={(e) => setWorkerProfile({...workerProfile, address: toTitleCase(e.target.value)})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
                  </div>
 
                  <div className="pt-4 border-t border-gray-100">
@@ -537,128 +513,32 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                    
                    <div className="mb-4">
                      <label className="text-xs font-bold text-gray-500 uppercase">Telefone / Whatsapp</label>
-                     <input 
-                       type="text" 
-                       value={workerProfile.phone}
-                       onChange={(e) => setWorkerProfile({...workerProfile, phone: e.target.value})}
-                       className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500"
-                     />
+                     <input type="text" value={workerProfile.phone} onChange={(e) => setWorkerProfile({...workerProfile, phone: e.target.value})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
                    </div>
 
                    <div className="mb-4">
                      <label className="text-xs font-bold text-gray-500 uppercase">CPF (Apenas números)</label>
-                     <input 
-                       type="text" 
-                       value={workerProfile.cpf}
-                       onChange={(e) => setWorkerProfile({...workerProfile, cpf: formatCPF(e.target.value)})}
-                       maxLength={14}
-                       placeholder="000.000.000-00"
-                       className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500 bg-gray-50 tracking-widest font-mono"
-                     />
+                     <input type="text" value={workerProfile.cpf} onChange={(e) => setWorkerProfile({...workerProfile, cpf: formatCPF(e.target.value)})} maxLength={14} placeholder="000.000.000-00" className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500 bg-gray-50 tracking-widest font-mono" />
                    </div>
                  </div>
 
                  <div className="bg-gray-50 p-4 rounded-xl flex items-center gap-3 border border-gray-200">
-                   <input 
-                     type="checkbox" 
-                     checked={workerProfile.hasTransport}
-                     onChange={(e) => setWorkerProfile({...workerProfile, hasTransport: e.target.checked})}
-                     className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
-                   />
+                   <input type="checkbox" checked={workerProfile.hasTransport} onChange={(e) => setWorkerProfile({...workerProfile, hasTransport: e.target.checked})} className="w-5 h-5 text-green-600 rounded focus:ring-green-500" />
                    <label className="text-sm text-gray-700 font-medium">Tenho meio de transporte próprio</label>
                  </div>
                </div>
 
-               <button 
-                 onClick={handleSaveProfile}
-                 className="w-full bg-green-600 text-white font-bold py-4 rounded-xl mt-6 hover:bg-green-700 transition shadow-lg shadow-green-100"
-               >
-                 Salvar Dados
-               </button>
+               <button onClick={handleSaveProfile} className="w-full bg-green-600 text-white font-bold py-4 rounded-xl mt-6 hover:bg-green-700 transition shadow-lg shadow-green-100">Salvar Dados</button>
             </div>
           </div>
         </div>
       )}
 
-      {showFilterModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden">
-            <div className="bg-green-600 p-6 flex flex-col items-center justify-center relative overflow-hidden">
-               <div className="absolute opacity-20 text-white transform scale-150 top-2 right-2">
-                 <i className="fa-solid fa-map text-9xl"></i>
-               </div>
-               <h3 className="text-white font-bold text-xl relative z-10">Filtrar por Região</h3>
-               <p className="text-green-100 text-xs relative z-10">Estado de Santa Catarina</p>
-            </div>
-
-            <div className="p-6 space-y-4">
-               <div>
-                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Município</label>
-                 <div className="relative">
-                   <i className="fa-solid fa-city absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                   <select 
-                     value={selectedCity}
-                     onChange={(e) => {
-                       setSelectedCity(e.target.value);
-                       setSelectedNeighborhood(''); 
-                     }}
-                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500 appearance-none"
-                   >
-                     <option value="">Todas as Cidades</option>
-                     {availableCities.map(city => (
-                       <option key={city} value={city}>{city}</option>
-                     ))}
-                   </select>
-                 </div>
-               </div>
-
-               <div>
-                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Bairro</label>
-                 <div className="relative">
-                   <i className="fa-solid fa-tree-city absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                   <select 
-                     value={selectedNeighborhood}
-                     onChange={(e) => setSelectedNeighborhood(e.target.value)}
-                     disabled={!selectedCity} 
-                     className={`
-                       w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500 appearance-none
-                       ${!selectedCity ? 'opacity-50 cursor-not-allowed' : ''}
-                     `}
-                   >
-                     <option value="">Todos os Bairros</option>
-                     {availableNeighborhoods.map(bairro => (
-                       <option key={bairro} value={bairro}>{bairro}</option>
-                     ))}
-                   </select>
-                 </div>
-               </div>
-
-               <div className="flex gap-3 mt-6">
-                 <button 
-                   onClick={clearFilters}
-                   className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition"
-                 >
-                   Limpar
-                 </button>
-                 <button 
-                   onClick={() => setShowFilterModal(false)}
-                   className="flex-1 py-3 rounded-xl font-bold bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 transition"
-                 >
-                   Ver Vagas
-                 </button>
-               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* --- MODAL DE DETALHES DA VAGA --- */}
       {selectedJob && (
         <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in overflow-y-auto">
           <div className="bg-white px-6 py-4 border-b flex items-center sticky top-0 z-10">
-            <button 
-              onClick={() => setSelectedJob(null)}
-              className="text-gray-500 hover:text-gray-800 mr-4"
-            >
+            <button onClick={() => setSelectedJob(null)} className="text-gray-500 hover:text-gray-800 mr-4">
               <i className="fa-solid fa-arrow-left text-xl"></i>
             </button>
             <h2 className="text-lg font-bold text-gray-800">Detalhes da Vaga</h2>
@@ -683,13 +563,13 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
 
                 {companyInfos[(selectedJob as any).user_id || selectedJob.companyId]?.address && (
                   <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-                     <div className="mt-0.5"><i className="fa-solid fa-map-location-dot text-blue-500"></i></div>
-                     <div>
-                        <p className="text-xs font-bold text-blue-700 uppercase">Endereço da Empresa</p>
-                        <p className="text-sm text-gray-700">
-                          {companyInfos[(selectedJob as any).user_id || selectedJob.companyId].address}
-                        </p>
-                     </div>
+                      <div className="mt-0.5"><i className="fa-solid fa-map-location-dot text-blue-500"></i></div>
+                      <div>
+                         <p className="text-xs font-bold text-blue-700 uppercase">Endereço da Empresa</p>
+                         <p className="text-sm text-gray-700">
+                           {companyInfos[(selectedJob as any).user_id || selectedJob.companyId].address}
+                         </p>
+                      </div>
                   </div>
                 )}
 
@@ -700,7 +580,8 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <p className="text-xs text-gray-400 uppercase font-bold mb-1">Data</p>
-                      <p className="text-gray-800 text-xl font-bold">{new Date(selectedJob.date).toLocaleDateString('pt-BR')}</p>
+                      {/* --- CORREÇÃO DE DATA AQUI TAMBÉM --- */}
+                      <p className="text-gray-800 text-xl font-bold">{formatDateDisplay(selectedJob.date)}</p>
                     </div>
                 </div>
 
@@ -715,13 +596,25 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                     </div>
                 </div>
 
-                {/* --- SEÇÃO DE SEXO NO MODAL --- */}
-                {(selectedJob as any).gender && (
-                  <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Sexo</p>
-                    <p className="text-gray-800 font-bold">{ (selectedJob as any).gender }</p>
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-4 mb-6">
+                    {(selectedJob as any).gender && (
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex-1">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Sexo</p>
+                          <p className="text-gray-800 font-bold flex items-center gap-2">
+                             <i className="fa-solid fa-venus-mars text-gray-400"></i> { (selectedJob as any).gender }
+                          </p>
+                        </div>
+                    )}
+                    
+                    {(selectedJob as any).cnh && (
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex-1">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">CNH Necessária</p>
+                          <p className="text-gray-800 font-bold flex items-center gap-2">
+                             <i className="fa-solid fa-id-card text-gray-400"></i> { (selectedJob as any).cnh }
+                          </p>
+                        </div>
+                    )}
+                </div>
 
                 <div className="mb-6">
                   <p className="text-xs text-gray-400 uppercase font-bold mb-2">Horário</p>
