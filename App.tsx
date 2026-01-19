@@ -104,12 +104,16 @@ const App: React.FC = () => {
         dailyRate: item.daily_rate,
         description: item.description,
         
-        // --- AQUI: PUXANDO DA TABELA JOBS ---
+        // --- CORREÇÃO IMPORTANTE AQUI ---
+        // Adicionando o mapeamento do Sexo e da CNH que vêm do banco
+        gender: item.gender, 
+        cnh: item.cnh,
+        // --------------------------------
+
         // Prioridade TOTAL para o que está na tabela jobs (city/neighborhood)
         // Se estiver vazio lá, tenta o profile. Se não, "Não Informado".
         city: item.city || profileData?.municipio || 'Não Informado',
         neighborhood: item.neighborhood || profileData?.bairro || 'Não Informado',
-        // ------------------------------------
 
         status: iHaveApplied ? JobStatus.PENDING : JobStatus.OPEN,
         appliedWorkerId: iHaveApplied ? currentUser?.id : undefined,

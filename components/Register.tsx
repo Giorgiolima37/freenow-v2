@@ -14,6 +14,9 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
+  // --- NOVO ESTADO: CONFIRMAR SENHA ---
+  const [confirmPassword, setConfirmPassword] = useState('');
+  
   // Novos estados para empresa
   const [businessName, setBusinessName] = useState('');
   const [cnpj, setCnpj] = useState(''); 
@@ -51,6 +54,13 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // --- VALIDAÇÃO DE SENHA ---
+    if (password !== confirmPassword) {
+      alert('As senhas não coincidem.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -192,6 +202,18 @@ const Register: React.FC<RegisterProps> = ({ onRegister, onSwitchToLogin }) => {
             className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 outline-none"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+
+        {/* --- CAMPO CONFIRMAR SENHA ADICIONADO --- */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Senha</label>
+          <input 
+            type="password" 
+            required
+            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 outline-none"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
           />
         </div>
 
