@@ -55,6 +55,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [editingRating, setEditingRating] = useState<number>(1);
   const [isSavingRating, setIsSavingRating] = useState(false);
   
+  // NOVO ESTADO: Controla se pode editar a nota ou apenas visualizar
+  const [isRatingMode, setIsRatingMode] = useState(false);
+
   // Novos estados para controlar a exclusão automática após avaliação
   const [currentReviewJobId, setCurrentReviewJobId] = useState<string | null>(null);
   const [hasRatedSession, setHasRatedSession] = useState(false);
@@ -247,7 +250,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       today.setHours(0, 0, 0, 0); 
 
       for (const job of localJobs) {
-        // Se estiver FILLED (finalizada manualmente), não deleta por data ainda, pois precisa de avaliação
         if (job.status === 'FILLED') continue;
 
         const jobDateParts = job.date.split('-');
@@ -323,8 +325,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     }
   };
 
-  // --- ALTERAÇÃO NO VIEW PROFILE PARA RECEBER O JOB ID ---
-  const handleViewProfile = async (workerId: string, workerNameFromApp?: string, jobId?: string) => {
+  // --- ATUALIZADO: Adicionado parâmetro enableRating para controlar bloqueio ---
+  const handleViewProfile = async (workerId: string, workerNameFromApp?: string, jobId?: string, enableRating: boolean = false) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', workerId).single();
       if (error) throw error;
@@ -348,11 +350,13 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         });
         setEditingRating(initialRating);
         
-        // Armazena qual vaga estamos avaliando
+        // Define se é modo de avaliação ou apenas visualização
+        setIsRatingMode(enableRating);
+
         if (jobId) {
             setCurrentReviewJobId(jobId);
         }
-        setHasRatedSession(false); // Reseta o estado de "já avaliou nesta sessão"
+        setHasRatedSession(false);
       }
     } catch (err) {
       alert('Não foi possível carregar o perfil.');
@@ -386,9 +390,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     // Se o usuário salvou a nota E temos o ID da vaga associada
     if (hasRatedSession && currentReviewJobId) {
         try {
-            // Remove a vaga do banco de dados (e as candidaturas associadas)
             await handleTerminateJob(currentReviewJobId);
-            // Limpa visualmente a lista de aplicações da vaga removida
             setApplications(curr => curr.filter(app => app.job_id !== currentReviewJobId));
             alert("Ciclo concluído! A vaga foi removida do histórico.");
         } catch (error) {
@@ -469,8 +471,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                       {isHired ? (
                         <div className="flex flex-col items-end gap-1">
                           <span className="text-xs text-green-700 font-semibold mb-1">Esperando Avaliação</span>
+                          {/* BOTÃO AVALIAR: Modo edição ATIVADO (true) */}
                           <button 
-                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id)}
+                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id, true)}
                             className="bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-gray-900 transition flex items-center gap-2"
                           >
                              <i className="fa-solid fa-star text-yellow-400"></i> Avaliar
@@ -478,8 +481,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                         </div>
                       ) : (
                         <>
+                          {/* BOTÃO VER PERFIL: Modo edição DESATIVADO (false) */}
                           <button 
-                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id)}
+                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id, false)}
                             className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition"
                           >
                             Ver Perfil
@@ -700,27 +704,35 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                     })}
                   </div>
                   
-                  <div className="w-full flex items-center gap-3">
-                      <span className="font-bold text-gray-600 w-8 text-center">{editingRating.toFixed(1)}</span>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="5" 
-                        step="0.5" 
-                        value={editingRating}
-                        onChange={(e) => setEditingRating(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
-                      />
-                  </div>
+                  {/* SE ESTIVER EM MODO DE AVALIAÇÃO, MOSTRA O SLIDER E O BOTÃO */}
+                  {isRatingMode ? (
+                    <>
+                      <div className="w-full flex items-center gap-3">
+                          <span className="font-bold text-gray-600 w-8 text-center">{editingRating.toFixed(1)}</span>
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="5" 
+                            step="0.5" 
+                            value={editingRating}
+                            onChange={(e) => setEditingRating(parseFloat(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                          />
+                      </div>
 
-                  <button 
-                    onClick={handleSaveRating}
-                    disabled={isSavingRating}
-                    className="mt-3 bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                  >
-                    {isSavingRating ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-floppy-disk"></i>}
-                    Salvar Nota
-                  </button>
+                      <button 
+                        onClick={handleSaveRating}
+                        disabled={isSavingRating}
+                        className="mt-3 bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                      >
+                        {isSavingRating ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-floppy-disk"></i>}
+                        Salvar Nota
+                      </button>
+                    </>
+                  ) : (
+                    // SE NÃO, APENAS UMA MENSAGEM INDICATIVA (OPCIONAL)
+                    <p className="text-xs text-gray-500 mt-1 font-medium">Nota atual do motorista</p>
+                  )}
               </div>
               {/* -------------------------------------- */}
 
