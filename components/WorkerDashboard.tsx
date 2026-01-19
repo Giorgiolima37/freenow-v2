@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Job, ApplicationStatus } from '../types';
+import html2canvas from 'html2canvas'; // Import html2canvas
 
 interface WorkerDashboardProps {
   user: User;
@@ -73,6 +74,19 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     const parts = dateString.split('-'); // [2026, 01, 19]
     if (parts.length !== 3) return dateString;
     return `${parts[2]}/${parts[1]}/${parts[0]}`; // 19/01/2026
+  };
+
+  // --- FUNÇÃO PARA SALVAR COMO IMAGEM ---
+  const handleSaveAsImage = async (jobId: string) => {
+    const element = document.getElementById(`job-card-${jobId}`);
+    if (element) {
+      const canvas = await html2canvas(element);
+      const data = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = data;
+      link.download = `vaga-${jobId}.png`;
+      link.click();
+    }
   };
 
   useEffect(() => {
@@ -331,7 +345,8 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
 
               return (
                 <div 
-                  key={job.id} 
+                  key={job.id}
+                  id={`job-card-${job.id}`} // ID único para o print 
                   onClick={() => handleOpenDetails(job)}
                   className={`
                     p-5 rounded-2xl shadow-sm hover:shadow-md transition cursor-pointer active:scale-95 border-2
@@ -357,6 +372,17 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <span className={`font-bold ${isHired ? 'text-green-700' : 'text-green-600'}`}>
                         R$ {job.dailyRate.toFixed(2)}
                       </span>
+                        {/* Ícone de Câmera */}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Evita que o clique abra os detalhes da vaga
+                            handleSaveAsImage(job.id);
+                          }}
+                          className="mt-2 text-gray-500 hover:text-gray-700"
+                          title="Salvar como imagem"
+                        >
+                          <i className="fa-solid fa-camera"></i>
+                        </button>
                     </div>
                   </div>
                   

@@ -17,7 +17,7 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
   
   const [gender, setGender] = useState('Indiferente');
   
-  // --- NOVO ESTADO PARA CNH ---
+  // --- ESTADO PARA CNH ---
   const [cnh, setCnh] = useState('Não exigido');
 
   const [benefits, setBenefits] = useState<string[]>([]);
@@ -34,7 +34,6 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
     DAILY_RATES.push(i);
   }
 
-  // Função de formatação (mantida conforme seu padrão)
   const toTitleCase = (str: string) => {
     return str
       .toLowerCase()
@@ -70,7 +69,6 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
         city: city,
         neighborhood: neighborhood,
         gender: gender,
-        // Envia a CNH para o banco (certifique-se de ter a coluna 'cnh' na tabela jobs)
         cnh: cnh 
       };
 
@@ -97,8 +95,8 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
           status: data.status as JobStatus,
           city: data.city,
           neighborhood: data.neighborhood,
-          // gender: data.gender,
-          // cnh: data.cnh
+          gender: data.gender, // Garante que passa pro App
+          cnh: data.cnh       // Garante que passa pro App
         };
         
         onCreate(formattedJob);
@@ -177,11 +175,13 @@ const CreateJob: React.FC<CreateJobProps> = ({ user, onCancel, onCreate }) => {
               <option value="Indiferente">Indiferente</option>
               <option value="Masculino">Masculino</option>
               <option value="Feminino">Feminino</option>
+              {/* --- NOVA OPÇÃO ADICIONADA --- */}
+              <option value="LGBTQIA+">LGBTQIA+</option>
             </select>
           </div>
         </div>
 
-        {/* --- NOVO CAMPO: CNH --- */}
+        {/* CAMPO: CNH */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">Habilitação (CNH)</label>
           <select 

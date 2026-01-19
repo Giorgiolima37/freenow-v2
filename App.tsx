@@ -104,11 +104,11 @@ const App: React.FC = () => {
         dailyRate: item.daily_rate,
         description: item.description,
         
-        // --- CORREÇÃO IMPORTANTE AQUI ---
-        // Adicionando o mapeamento do Sexo e da CNH que vêm do banco
+        // --- CORREÇÃO AQUI: ADICIONADO O MAPEAMENTO ---
+        // Passando os dados de Sexo e CNH vindos do banco para o objeto Job
         gender: item.gender, 
         cnh: item.cnh,
-        // --------------------------------
+        // ----------------------------------------------
 
         // Prioridade TOTAL para o que está na tabela jobs (city/neighborhood)
         // Se estiver vazio lá, tenta o profile. Se não, "Não Informado".
