@@ -52,8 +52,12 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // --- ESTADOS PARA O SISTEMA DE AVALIAÇÃO ---
-  const [editingRating, setEditingRating] = useState<number>(1); // Inicia em 1 por padrão
+  const [editingRating, setEditingRating] = useState<number>(1);
   const [isSavingRating, setIsSavingRating] = useState(false);
+  
+  // Novos estados para controlar a exclusão automática após avaliação
+  const [currentReviewJobId, setCurrentReviewJobId] = useState<string | null>(null);
+  const [hasRatedSession, setHasRatedSession] = useState(false);
 
   const [companyProfile, setCompanyProfile] = useState({
     businessName: user.businessName || '',
@@ -142,7 +146,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       .from('applications')
       .select('*, jobs(role)')
       .in('job_id', companyJobIds)
-      .eq('status', 'PENDING');
+      .in('status', ['PENDING', 'HIRED']);
 
     if (appsData && appsData.length > 0) {
       const workerIds = appsData.map((app: any) => app.worker_id);
@@ -152,7 +156,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         .select('id, photo_url')
         .in('id', workerIds);
 
-      const formattedApps = appsData.map((app: any) => {
+      let formattedApps = appsData.map((app: any) => {
         const profile = profilesData?.find((p: any) => p.id === app.worker_id);
         return {
           ...app,
@@ -160,6 +164,21 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           worker_photo: profile?.photo_url
         };
       });
+
+      // --- FILTRO: Se tem alguém HIRED, esconde os PENDING dessa vaga ---
+      const jobsWithHires = new Set(
+        formattedApps
+          .filter((app: any) => app.status === 'HIRED')
+          .map((app: any) => app.job_id)
+      );
+
+      formattedApps = formattedApps.filter((app: any) => {
+        if (jobsWithHires.has(app.job_id)) {
+           return app.status === 'HIRED';
+        }
+        return true;
+      });
+
       setApplications(formattedApps);
     } else {
       setApplications([]);
@@ -228,6 +247,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       today.setHours(0, 0, 0, 0); 
 
       for (const job of localJobs) {
+        // Se estiver FILLED (finalizada manualmente), não deleta por data ainda, pois precisa de avaliação
+        if (job.status === 'FILLED') continue;
+
         const jobDateParts = job.date.split('-');
         const jobDate = new Date(
           Number(jobDateParts[0]), 
@@ -239,7 +261,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         expiryDate.setDate(expiryDate.getDate() + 1);
 
         if (today >= expiryDate) {
-          console.log(`Limpando vaga vencida: ${job.role} do dia ${job.date}`);
           await handleTerminateJob(job.id);
         }
       }
@@ -257,30 +278,44 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   };
 
   const handleHireCandidate = async (applicationId: string, workerName: string, jobId: string) => {
-    const confirmHire = window.confirm(`Deseja contratar ${workerName}? A vaga será excluída do banco, mas ficará visível aqui por 2 minutos.`);
+    const confirmHire = window.confirm(`Deseja contratar ${workerName}? A vaga será marcada como Finalizada e os outros candidatos serão dispensados.`);
     
     if (!confirmHire) return;
 
     try {
-      const { error: appError } = await supabase.from('applications').delete().eq('job_id', jobId);
+      // 1. Marca Candidato como HIRED
+      const { error: appError } = await supabase
+        .from('applications')
+        .update({ status: 'HIRED' })
+        .eq('id', applicationId);
+      
       if (appError) throw appError;
 
-      const { error: jobError } = await supabase.from('jobs').delete().eq('id', jobId);
+      // 2. Marca Vaga como FILLED
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ status: 'FILLED' })
+        .eq('id', jobId);
+
       if (jobError) throw jobError;
 
-      alert(`Sucesso! ${workerName} contratado. A vaga sumirá da tela automaticamente em 2 minutos.`);
+      alert(`Sucesso! ${workerName} contratado.`);
 
+      // 3. Atualizações Visuais
       setLocalJobs(current => current.map(job => 
-        job.id === jobId ? { ...job, status: 'Preenchida' } : job
+        job.id === jobId ? { ...job, status: 'FILLED' } : job
       ));
       
-      setApplications(current => current.filter(app => app.job_id !== jobId));
+      setApplications(current => current.filter(app => {
+         if (app.job_id === jobId) {
+             return app.id === applicationId; 
+         }
+         return true;
+      }).map(app => 
+         app.id === applicationId ? { ...app, status: 'HIRED' } : app
+      ));
 
       if (onJobUpdate) onJobUpdate();
-
-      setTimeout(() => {
-        setLocalJobs(current => current.filter(j => j.id !== jobId));
-      }, 2 * 60 * 1000); 
 
     } catch (error: any) {
       console.error('Erro no servidor:', error);
@@ -288,12 +323,12 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     }
   };
 
-  const handleViewProfile = async (workerId: string, workerNameFromApp?: string) => {
+  // --- ALTERAÇÃO NO VIEW PROFILE PARA RECEBER O JOB ID ---
+  const handleViewProfile = async (workerId: string, workerNameFromApp?: string, jobId?: string) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', workerId).single();
       if (error) throw error;
       if (data) {
-        // --- LOGICA DE NOTA: SE FOR 0 OU NULL, ASSUME 1 ---
         const initialRating = (data.rating === 0 || data.rating === null) ? 1 : data.rating;
 
         setSelectedCandidate({
@@ -312,6 +347,12 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           bairro: data.bairro
         });
         setEditingRating(initialRating);
+        
+        // Armazena qual vaga estamos avaliando
+        if (jobId) {
+            setCurrentReviewJobId(jobId);
+        }
+        setHasRatedSession(false); // Reseta o estado de "já avaliou nesta sessão"
       }
     } catch (err) {
       alert('Não foi possível carregar o perfil.');
@@ -330,13 +371,35 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         if (error) throw error;
 
         setSelectedCandidate(prev => prev ? { ...prev, rating: editingRating } : null);
-        alert('Avaliação salva com sucesso!');
+        setHasRatedSession(true); // MARCA QUE SALVOU A NOTA
+        alert('Avaliação salva com sucesso! Ao fechar, a vaga será concluída.');
     } catch (error) {
         console.error('Erro ao salvar avaliação:', error);
         alert('Erro ao salvar a avaliação.');
     } finally {
         setIsSavingRating(false);
     }
+  };
+
+  // --- NOVA FUNÇÃO PARA FECHAR O MODAL ---
+  const handleCloseProfileModal = async () => {
+    // Se o usuário salvou a nota E temos o ID da vaga associada
+    if (hasRatedSession && currentReviewJobId) {
+        try {
+            // Remove a vaga do banco de dados (e as candidaturas associadas)
+            await handleTerminateJob(currentReviewJobId);
+            // Limpa visualmente a lista de aplicações da vaga removida
+            setApplications(curr => curr.filter(app => app.job_id !== currentReviewJobId));
+            alert("Ciclo concluído! A vaga foi removida do histórico.");
+        } catch (error) {
+            console.error("Erro ao finalizar vaga:", error);
+        }
+    }
+    
+    // Reseta estados
+    setSelectedCandidate(null);
+    setCurrentReviewJobId(null);
+    setHasRatedSession(false);
   };
 
   return (
@@ -368,45 +431,71 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
               <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">
                 {applications.length}
               </span>
-              Candidaturas Recebidas
+              Candidaturas / Em Serviço
             </h2>
             <div className="space-y-3">
-              {applications.map(app => (
-                <div key={app.id} className="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex justify-between items-center">
-                  
-                  {/* FOTO E NOME */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-100 overflow-hidden flex-shrink-0">
-                       {app.worker_photo ? (
-                         <img src={app.worker_photo} alt={app.worker_name} className="w-full h-full object-cover" />
-                       ) : (
-                         <div className="w-full h-full flex items-center justify-center text-gray-400">
-                           <i className="fa-solid fa-user"></i>
-                         </div>
-                       )}
+              {applications.map(app => {
+                const isHired = app.status === 'HIRED';
+                
+                return (
+                  <div 
+                    key={app.id} 
+                    className={`bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border-l-4 ${isHired ? 'border-green-600 bg-green-50' : 'border-green-500'}`}
+                  >
+                    
+                    {/* FOTO E NOME */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-100 overflow-hidden flex-shrink-0">
+                         {app.worker_photo ? (
+                           <img src={app.worker_photo} alt={app.worker_name} className="w-full h-full object-cover" />
+                         ) : (
+                           <div className="w-full h-full flex items-center justify-center text-gray-400">
+                             <i className="fa-solid fa-user"></i>
+                           </div>
+                         )}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-800 capitalize">{app.worker_name}</p>
+                        <p className="text-sm text-gray-500">vaga: {app.job_title}</p>
+                        {isHired && (
+                           <span className="inline-block bg-green-200 text-green-800 text-[10px] px-2 py-0.5 rounded-full font-bold mt-1">
+                             EM SERVIÇO
+                           </span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-gray-800 capitalize">{app.worker_name}</p>
-                      <p className="text-sm text-gray-500">vaga: {app.job_title}</p>
-                    </div>
-                  </div>
 
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleViewProfile(app.worker_id, app.worker_name)}
-                      className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition"
-                    >
-                      Ver Perfil
-                    </button>
-                    <button 
-                      onClick={() => handleHireCandidate(app.id, app.worker_name, app.job_id)}
-                      className="bg-green-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-1"
-                    >
-                      <i className="fa-solid fa-check"></i> Contratar
-                    </button>
+                    <div className="flex gap-2">
+                      {isHired ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-xs text-green-700 font-semibold mb-1">Esperando Avaliação</span>
+                          <button 
+                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id)}
+                            className="bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-gray-900 transition flex items-center gap-2"
+                          >
+                             <i className="fa-solid fa-star text-yellow-400"></i> Avaliar
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => handleViewProfile(app.worker_id, app.worker_name, app.job_id)}
+                            className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition"
+                          >
+                            Ver Perfil
+                          </button>
+                          <button 
+                            onClick={() => handleHireCandidate(app.id, app.worker_name, app.job_id)}
+                            className="bg-green-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-1"
+                          >
+                            <i className="fa-solid fa-check"></i> Contratar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -421,13 +510,14 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
         <div className="space-y-4">
           {localJobs.map(job => {
             const interessados = counts[job.id] || 0;
-            const isClosed = job.status === 'Preenchida' || job.status === 'Fechada';
+            // Verifica status para definir se está finalizada
+            const isFinalized = job.status === 'FILLED' || job.status === 'Preenchida' || job.status === 'Fechada';
             
             return (
               <div 
                 key={job.id} 
                 onClick={() => handleOpenJobDetails(job)}
-                className={`bg-white p-5 rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition relative group ${isClosed ? 'opacity-75 bg-gray-50' : 'border-gray-100'}`}
+                className={`bg-white p-5 rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition relative group ${isFinalized ? 'opacity-70 bg-gray-50' : 'border-gray-100'}`}
               >
                 <div className="flex justify-between items-start">
                   <h3 className="font-bold text-gray-800">{job.role}</h3>
@@ -439,13 +529,15 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-green-600 font-bold">R$ {job.dailyRate.toFixed(2)}</span>
                   <div className="flex items-center">
-                    {interessados > 0 && !isClosed && (
+                    {interessados > 0 && !isFinalized && (
                       <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white border-2 border-green-500 text-green-600 text-xs font-bold mr-2">
                         {interessados}
                       </div>
                     )}
-                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${isClosed ? 'bg-green-100 text-green-700' : 'bg-green-50 text-green-600'}`}>
-                      {isClosed ? 'CONTRATADO' : 'ABERTO'}
+                    
+                    {/* LOGICA DO BADGE FINALIZADA / ABERTO */}
+                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${isFinalized ? 'bg-gray-200 text-gray-500' : 'bg-green-50 text-green-600'}`}>
+                      {isFinalized ? 'FINALIZADA' : 'ABERTO'}
                     </span>
                   </div>
                 </div>
@@ -460,7 +552,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
 
       {selectedJob && (
         <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in overflow-y-auto">
-          <div className="bg-white px-6 py-4 border-b flex items-center sticky top-0 z-10">
+          {/* ... Modal Detalhes da Vaga (mantido igual) ... */}
+           <div className="bg-white px-6 py-4 border-b flex items-center sticky top-0 z-10">
             <button 
               onClick={() => setSelectedJob(null)}
               className="text-gray-500 hover:text-gray-800 mr-4"
@@ -469,18 +562,13 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
             </button>
             <h2 className="text-lg font-bold text-gray-800">Detalhes da Vaga</h2>
           </div>
-
           <div className="p-6 max-w-lg mx-auto w-full flex-1 flex flex-col justify-between">
              <div>
-                <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block">
-                  DIÁRIA DISPONÍVEL
+                <span className={`text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block ${selectedJob.status === 'FILLED' ? 'bg-gray-200 text-gray-500' : 'bg-green-100 text-green-700'}`}>
+                  {selectedJob.status === 'FILLED' ? 'FINALIZADA' : 'DIÁRIA DISPONÍVEL'}
                 </span>
-
                 <h1 className="text-2xl font-bold text-gray-900 mb-1">Free para {selectedJob.role}</h1>
-                <p className="text-gray-500 font-medium mb-6 flex items-center gap-2">
-                  <i className="fa-solid fa-shop text-gray-400"></i> {selectedJob.companyName}
-                </p>
-
+                <p className="text-gray-500 font-medium mb-6 flex items-center gap-2"><i className="fa-solid fa-shop text-gray-400"></i> {selectedJob.companyName}</p>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <p className="text-xs text-gray-400 uppercase font-bold mb-1">Pagamento</p>
@@ -491,58 +579,31 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                       <p className="text-gray-800 text-xl font-bold">{formatDateDisplay(selectedJob.date)}</p>
                     </div>
                 </div>
-
                 <div className="mb-6">
                   <p className="text-xs text-gray-400 uppercase font-bold mb-2">Horário</p>
-                  <p className="text-gray-700 flex items-center gap-2">
-                    <i className="fa-regular fa-clock text-green-500"></i> {selectedJob.startTime} às {selectedJob.endTime}
-                  </p>
+                  <p className="text-gray-700 flex items-center gap-2"><i className="fa-regular fa-clock text-green-500"></i> {selectedJob.startTime} às {selectedJob.endTime}</p>
                 </div>
-
                 <div className="mb-6">
                   <p className="text-xs text-gray-400 uppercase font-bold mb-2">Benefícios</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedJob.benefits.map((b, i) => (
-                      <span key={i} className="bg-green-50 text-green-700 px-3 py-1 rounded-lg text-sm font-medium flex items-center gap-1">
-                        <i className="fa-solid fa-check text-xs"></i> {b}
-                      </span>
+                      <span key={i} className="bg-green-50 text-green-700 px-3 py-1 rounded-lg text-sm font-medium flex items-center gap-1"><i className="fa-solid fa-check text-xs"></i> {b}</span>
                     ))}
                   </div>
                 </div>
-
                 <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                  <p className="text-xs font-bold text-gray-400 uppercase mb-2">
-                    Descrição
-                  </p>
-                  <p className="text-sm text-gray-600 italic leading-relaxed">
-                    {selectedJob.description || "Sem descrição adicional fornecida."}
-                  </p>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-2">Descrição</p>
+                  <p className="text-sm text-gray-600 italic leading-relaxed">{selectedJob.description || "Sem descrição adicional fornecida."}</p>
                 </div>
              </div>
-
              <div className="mt-6 pt-4 border-t border-gray-100 pb-6">
                {showDeleteConfirm ? (
                  <div className="flex gap-4 animate-fade-in">
-                    <button 
-                      onClick={() => setShowDeleteConfirm(false)}
-                      className="flex-1 bg-gray-100 text-gray-700 font-bold py-4 rounded-xl hover:bg-gray-200 transition text-lg"
-                    >
-                      Cancelar
-                    </button>
-                    <button 
-                      onClick={() => handleTerminateJob(selectedJob.id)}
-                      className="flex-1 bg-red-600 text-white font-bold py-4 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-200 text-lg flex items-center justify-center gap-2"
-                    >
-                      <i className="fa-solid fa-trash"></i> Confirmar
-                    </button>
+                    <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 bg-gray-100 text-gray-700 font-bold py-4 rounded-xl hover:bg-gray-200 transition text-lg">Cancelar</button>
+                    <button onClick={() => handleTerminateJob(selectedJob.id)} className="flex-1 bg-red-600 text-white font-bold py-4 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-200 text-lg flex items-center justify-center gap-2"><i className="fa-solid fa-trash"></i> Confirmar</button>
                  </div>
                ) : (
-                 <button 
-                   onClick={() => setShowDeleteConfirm(true)}
-                   className="w-full bg-red-50 text-red-600 border border-red-200 font-bold py-4 rounded-xl hover:bg-red-100 transition text-lg"
-                 >
-                   Encerrar Vaga
-                 </button>
+                 <button onClick={() => setShowDeleteConfirm(true)} className="w-full bg-red-50 text-red-600 border border-red-200 font-bold py-4 rounded-xl hover:bg-red-100 transition text-lg">Encerrar Vaga</button>
                )}
              </div>
           </div>
@@ -552,23 +613,16 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       {/* --- MODAL EDIT BIO --- */}
       {showCompanyBio && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in relative overflow-hidden">
+             {/* ... Conteúdo modal bio (igual) ... */}
+             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in relative overflow-hidden">
              <div className="bg-gray-900 px-6 py-4 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <h3 className="text-white font-bold text-lg">Bio da Empresa</h3>
                   {!isEditing && (
-                    <button 
-                      onClick={() => setIsEditing(true)} 
-                      className="text-gray-400 hover:text-white transition"
-                      title="Editar Informações"
-                    >
-                      <i className="fa-solid fa-pen text-sm"></i>
-                    </button>
+                    <button onClick={() => setIsEditing(true)} className="text-gray-400 hover:text-white transition"><i className="fa-solid fa-pen text-sm"></i></button>
                   )}
                 </div>
-                <button onClick={() => setShowCompanyBio(false)} className="text-gray-400 hover:text-white">
-                  <i className="fa-solid fa-xmark text-xl"></i>
-                </button>
+                <button onClick={() => setShowCompanyBio(false)} className="text-gray-400 hover:text-white"><i className="fa-solid fa-xmark text-xl"></i></button>
              </div>
              <div className="p-6">
                 <div className="flex justify-center mb-6">
@@ -579,79 +633,33 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Nome da Empresa</label>
-                    <input 
-                      type="text" 
-                      value={companyProfile.businessName}
-                      disabled={!isEditing} 
-                      onChange={(e) => setCompanyProfile({...companyProfile, businessName: toTitleCase(e.target.value)})}
-                      className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                    />
+                    <input type="text" value={companyProfile.businessName} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, businessName: toTitleCase(e.target.value)})} className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">CNPJ</label>
-                    <input 
-                      type="text" 
-                      value={companyProfile.cnpj}
-                      disabled={!isEditing}
-                      onChange={(e) => setCompanyProfile({...companyProfile, cnpj: formatCnpj(e.target.value)})}
-                      maxLength={18}
-                      placeholder="00.000.000/0000-00"
-                      className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                    />
+                    <input type="text" value={companyProfile.cnpj} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, cnpj: formatCnpj(e.target.value)})} maxLength={18} className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                   </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Município</label>
-                      <input 
-                        type="text" 
-                        value={companyProfile.municipio}
-                        disabled={!isEditing}
-                        onChange={(e) => setCompanyProfile({...companyProfile, municipio: toTitleCase(e.target.value)})}
-                        className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                      />
+                      <input type="text" value={companyProfile.municipio} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, municipio: toTitleCase(e.target.value)})} className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                     </div>
                     <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Bairro</label>
-                      <input 
-                        type="text" 
-                        value={companyProfile.bairro}
-                        disabled={!isEditing}
-                        onChange={(e) => setCompanyProfile({...companyProfile, bairro: toTitleCase(e.target.value)})}
-                        className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                      />
+                      <input type="text" value={companyProfile.bairro} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, bairro: toTitleCase(e.target.value)})} className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                     </div>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Endereço (Rua/Nº)</label>
-                    <input 
-                      type="text" 
-                      value={companyProfile.address}
-                      disabled={!isEditing}
-                      onChange={(e) => setCompanyProfile({...companyProfile, address: toTitleCase(e.target.value)})}
-                      className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                    />
+                    <input type="text" value={companyProfile.address} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, address: toTitleCase(e.target.value)})} className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Sobre a Empresa</label>
-                    <textarea 
-                      rows={3}
-                      value={companyProfile.description}
-                      disabled={!isEditing}
-                      onChange={(e) => setCompanyProfile({...companyProfile, description: e.target.value})}
-                      className={`w-full border rounded-lg p-3 mt-1 outline-none resize-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
-                    />
+                    <textarea rows={3} value={companyProfile.description} disabled={!isEditing} onChange={(e) => setCompanyProfile({...companyProfile, description: e.target.value})} className={`w-full border rounded-lg p-3 mt-1 outline-none resize-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`} />
                   </div>
                 </div>
-                
                 {isEditing && (
-                  <button 
-                    onClick={handleSaveCompanyProfile}
-                    className="w-full bg-green-600 text-white font-bold py-3 rounded-xl mt-6 hover:bg-green-700 transition shadow-lg shadow-green-100 animate-fade-in"
-                  >
-                    Salvar Alterações
-                  </button>
+                  <button onClick={handleSaveCompanyProfile} className="w-full bg-green-600 text-white font-bold py-3 rounded-xl mt-6 hover:bg-green-700 transition shadow-lg shadow-green-100 animate-fade-in">Salvar Alterações</button>
                 )}
              </div>
           </div>
@@ -661,7 +669,8 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       {selectedCandidate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-fade-in relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setSelectedCandidate(null)} className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 w-8 h-8 flex items-center justify-center z-10">
+            {/* BOTÃO FECHAR AGORA CHAMA A NOVA FUNÇÃO QUE VERIFICA SE DEVE EXCLUIR A VAGA */}
+            <button onClick={handleCloseProfileModal} className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 w-8 h-8 flex items-center justify-center z-10">
               <i className="fa-solid fa-xmark text-xl"></i>
             </button>
             <div className="p-6 flex flex-col items-center pt-10">
@@ -681,11 +690,11 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
               <div className="w-full bg-yellow-50 p-4 rounded-xl border border-yellow-100 mb-6 flex flex-col items-center">
                   <div className="flex gap-2 mb-2">
                     {[1, 2, 3, 4, 5].map((starIndex) => {
-                        let starClass = "fa-regular fa-star text-gray-300"; // Vazia
+                        let starClass = "fa-regular fa-star text-gray-300"; 
                         if (editingRating >= starIndex) {
-                            starClass = "fa-solid fa-star text-yellow-400"; // Cheia
+                            starClass = "fa-solid fa-star text-yellow-400"; 
                         } else if (editingRating >= starIndex - 0.5) {
-                            starClass = "fa-solid fa-star-half-stroke text-yellow-400"; // Meia
+                            starClass = "fa-solid fa-star-half-stroke text-yellow-400"; 
                         }
                         return <i key={starIndex} className={`${starClass} text-2xl`}></i>
                     })}
@@ -737,7 +746,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                   <div><p className="text-xs text-gray-500">Transporte</p><p className="font-semibold text-gray-800">{selectedCandidate.hasTransport ? 'Possui veículo próprio' : 'Depende de transporte público'}</p></div>
                 </div>
               </div>
-              <button onClick={() => setSelectedCandidate(null)} className="mt-6 w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">Fechar</button>
+              
+              {/* BOTÃO FECHAR TAMBÉM NO FINAL DA LISTA */}
+              <button onClick={handleCloseProfileModal} className="mt-6 w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">Fechar</button>
             </div>
           </div>
         </div>
