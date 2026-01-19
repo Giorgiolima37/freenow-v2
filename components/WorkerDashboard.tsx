@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Job, ApplicationStatus } from '../types';
-import html2canvas from 'html2canvas'; // Certifique-se de ter instalado: npm install html2canvas
+import html2canvas from 'html2canvas'; 
 
 interface WorkerDashboardProps {
   user: User;
@@ -19,7 +19,7 @@ interface CompanyInfo {
 const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout }) => {
   const [filter, setFilter] = useState('');
   
-  // --- ESTADOS DO DASHBOARD ---
+  // --- ESTADOS DO DASHBOARD E FILTROS ---
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedNeighborhood, setSelectedNeighborhood] = useState('');
@@ -39,13 +39,17 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     phone: '',
     cpf: '',
     hasTransport: false,
-    photoUrl: user.photoUrl || '' 
+    photoUrl: user.photoUrl || '',
+    rating: 0 
   });
   
   const [uploading, setUploading] = useState(false);
 
-  // --- HELPER: LISTAS ÚNICAS ---
+  // --- HELPER: LISTAS ÚNICAS PARA O FILTRO ---
+  // Lista de todas as cidades disponíveis nas vagas
   const availableCities = Array.from(new Set(jobs.map(j => j.city).filter(Boolean))).sort();
+  
+  // Lista de bairros (filtra baseado na cidade selecionada)
   const availableNeighborhoods = Array.from(new Set(
     jobs
       .filter(j => selectedCity ? j.city === selectedCity : true)
@@ -63,11 +67,19 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
       .replace(/(-\d{2})\d+?$/, '$1'); 
   };
 
+  // --- MÁSCARA TELEFONE ---
+  const formatPhone = (value: string) => {
+    return value
+      .replace(/\D/g, '') 
+      .replace(/(\d{2})(\d)/, '($1) $2') 
+      .replace(/(\d{5})(\d)/, '$1-$2') 
+      .replace(/(-\d{4})\d+?$/, '$1'); 
+  };
+
   const toTitleCase = (str: string) => {
     return str.replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
-  // --- FUNÇÃO PARA CORRIGIR A DATA ---
   const formatDateDisplay = (dateString: string) => {
     if (!dateString) return '';
     const parts = dateString.split('-'); 
@@ -75,20 +87,16 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     return `${parts[2]}/${parts[1]}/${parts[0]}`; 
   };
 
-  // --- FUNÇÃO PARA SALVAR COMO IMAGEM (MANUAL) ---
+  // --- FUNÇÃO PARA SALVAR COMO IMAGEM ---
   const handleSaveAsImage = async (jobId: string) => {
     const element = document.getElementById(`job-card-${jobId}`);
     if (element) {
-      try {
-        const canvas = await html2canvas(element, { backgroundColor: '#ffffff', scale: 2 });
-        const data = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.href = data;
-        link.download = `vaga-${jobId}.png`;
-        link.click();
-      } catch (err) {
-        console.error("Erro ao salvar imagem:", err);
-      }
+      const canvas = await html2canvas(element);
+      const data = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = data;
+      link.download = `vaga-${jobId}.png`;
+      link.click();
     }
   };
 
@@ -140,7 +148,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     async function fetchMyProfile() {
       const { data } = await supabase
         .from('profiles')
-        .select('age, municipio, bairro, address, phone, cpf, has_transport, photo_url')
+        .select('age, municipio, bairro, address, phone, cpf, has_transport, photo_url, rating')
         .eq('id', user.id)
         .single();
 
@@ -150,10 +158,11 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
           municipio: data.municipio || '',
           bairro: data.bairro || '',
           address: data.address || '',
-          phone: data.phone || '',
+          phone: data.phone || '', 
           cpf: data.cpf || '',
           hasTransport: data.has_transport || false,
-          photoUrl: data.photo_url || user.photoUrl || ''
+          photoUrl: data.photo_url || user.photoUrl || '',
+          rating: data.rating || 0 
         });
       }
     }
@@ -222,14 +231,11 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
   };
 
   const handleApply = async (job: Job) => {
-    // --- 1. TIRA O PRINT AUTOMÁTICO DO COMPROVANTE ---
+    // 1. PRINT AUTOMÁTICO
     const element = document.getElementById('job-detail-content');
     if (element) {
       try {
-        const canvas = await html2canvas(element, { 
-          backgroundColor: '#ffffff', // Garante fundo branco
-          scale: 2 // Melhor qualidade
-        });
+        const canvas = await html2canvas(element, { backgroundColor: '#ffffff', scale: 2 });
         const data = canvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = data;
@@ -237,11 +243,10 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
         link.click();
       } catch (printError) {
         console.error("Erro ao gerar comprovante:", printError);
-        // Não paramos o fluxo se o print falhar, apenas logamos
       }
     }
 
-    // --- 2. SEGUE COM A LÓGICA DE ACEITE NO BANCO ---
+    // 2. ACEITE NO BANCO
     try {
       const { error } = await supabase
         .from('applications') 
@@ -269,19 +274,24 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
     }
   };
 
+  // --- LÓGICA DE FILTRO ATUALIZADA ---
   const filteredJobs = jobs.filter(job => {
     const matchesText = 
       job.role.toLowerCase().includes(filter.toLowerCase()) || 
       job.companyName.toLowerCase().includes(filter.toLowerCase());
+    
+    // Filtro por Cidade
     const matchesCity = selectedCity ? job.city === selectedCity : true;
+    // Filtro por Bairro
     const matchesNeighborhood = selectedNeighborhood ? job.neighborhood === selectedNeighborhood : true;
+    
     return matchesText && matchesCity && matchesNeighborhood;
   });
 
   const clearFilters = () => {
     setSelectedCity('');
     setSelectedNeighborhood('');
-    setShowFilterModal(false);
+    // Não fecha o modal, apenas limpa para o usuário escolher de novo se quiser
   };
 
   return (
@@ -295,6 +305,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
           </div>
           
           <div className="flex gap-2 items-center">
+            {/* BOTÃO DE FILTRO DE REGIÃO */}
             <button 
               onClick={() => setShowFilterModal(true)}
               className={`
@@ -352,8 +363,8 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
             <i className="fa-solid fa-search text-gray-300 text-4xl mb-3"></i>
             <p className="text-gray-500">Nenhuma vaga encontrada.</p>
             {(selectedCity || selectedNeighborhood) && (
-              <button onClick={clearFilters} className="mt-3 text-green-600 font-bold text-sm hover:underline">
-                Limpar filtros de região
+              <button onClick={() => { clearFilters(); setShowFilterModal(true); }} className="mt-3 text-green-600 font-bold text-sm hover:underline">
+                Alterar filtros de região
               </button>
             )}
           </div>
@@ -395,7 +406,6 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                       <span className={`font-bold ${isHired ? 'text-green-700' : 'text-green-600'}`}>
                         R$ {job.dailyRate.toFixed(2)}
                       </span>
-                        {/* Ícone de Câmera Manual */}
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -476,7 +486,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
         )}
       </div>
 
-      {/* --- MODAL DE PERFIL --- */}
+      {/* --- MODAL DE PERFIL (Código Mantido) --- */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
@@ -526,6 +536,17 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                     />
                  </div>
                  <h2 className="text-xl font-bold text-gray-800">{user.name}</h2>
+                 
+                 <div className="flex gap-1 mt-1 mb-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <i
+                        key={star}
+                        className={`fa-solid fa-star text-lg ${
+                          star <= (workerProfile.rating || 0) ? 'text-yellow-400' : 'text-gray-300'
+                        }`}
+                      ></i>
+                    ))}
+                 </div>
                </div>
                
                <div className="space-y-4">
@@ -557,7 +578,14 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                    
                    <div className="mb-4">
                      <label className="text-xs font-bold text-gray-500 uppercase">Telefone / Whatsapp</label>
-                     <input type="text" value={workerProfile.phone} onChange={(e) => setWorkerProfile({...workerProfile, phone: e.target.value})} className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" />
+                     <input 
+                        type="text" 
+                        value={formatPhone(workerProfile.phone)} 
+                        onChange={(e) => setWorkerProfile({...workerProfile, phone: formatPhone(e.target.value)})} 
+                        maxLength={15}
+                        placeholder="(00) 00000-0000"
+                        className="w-full border rounded-lg p-3 mt-1 outline-none focus:ring-2 focus:ring-green-500" 
+                     />
                    </div>
 
                    <div className="mb-4">
@@ -578,7 +606,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
         </div>
       )}
 
-      {/* --- MODAL DE DETALHES DA VAGA --- */}
+      {/* --- MODAL DE DETALHES DA VAGA (Código Mantido) --- */}
       {selectedJob && (
         <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in overflow-y-auto">
           <div className="bg-white px-6 py-4 border-b flex items-center sticky top-0 z-10">
@@ -589,7 +617,7 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
           </div>
 
           <div 
-             id="job-detail-content" // --- ID ADICIONADO PARA O PRINT FUNCIONAR ---
+             id="job-detail-content" 
              className="p-6 max-w-lg mx-auto w-full flex-1 flex flex-col justify-between"
           >
              <div>
@@ -739,6 +767,66 @@ const WorkerDashboard: React.FC<WorkerDashboardProps> = ({ user, jobs, onLogout 
                  </button>
                )}
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NOVO: MODAL DE FILTRO DE REGIÃO --- */}
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-xs shadow-2xl p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <i className="fa-solid fa-map-location-dot text-green-600"></i> Filtrar Região
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Município / Cidade</label>
+                <select 
+                  value={selectedCity} 
+                  onChange={(e) => {
+                    setSelectedCity(e.target.value);
+                    setSelectedNeighborhood(''); // Reseta o bairro ao mudar a cidade
+                  }}
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Todas as Cidades</option>
+                  {availableCities.map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bairro</label>
+                <select 
+                  value={selectedNeighborhood} 
+                  onChange={(e) => setSelectedNeighborhood(e.target.value)}
+                  disabled={!selectedCity} // Só libera se escolher cidade primeiro
+                  className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500 ${!selectedCity ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <option value="">Todos os Bairros</option>
+                  {availableNeighborhoods.map(hood => (
+                    <option key={hood} value={hood}>{hood}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                onClick={clearFilters}
+                className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition"
+              >
+                Limpar
+              </button>
+              <button 
+                onClick={() => setShowFilterModal(false)}
+                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg transition"
+              >
+                Ver Vagas
+              </button>
+            </div>
           </div>
         </div>
       )}
