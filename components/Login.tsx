@@ -60,11 +60,32 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSwitchToRegister }) => {
   return (
     <div className="flex-1 flex flex-col p-8 justify-center">
       <div className="flex flex-col items-center text-center mb-10">
-        <img 
-          src="/logo.png" 
-          alt="Logo FreeNow" 
-          className="w-56 h-56 object-contain mb-6" 
-        />
+        
+        {/* --- INICIO: Adição do Texto Curvado Moderno --- */}
+        <div className="relative mb-6">
+            {/* SVG posicionado absolutamente sobre a imagem para criar o arco */}
+            <svg className="absolute w-full h-full scale-110 -top-2" viewBox="0 0 100 100" style={{ pointerEvents: 'none' }}>
+                <defs>
+                    {/* Caminho invisível em forma de arco */}
+                    <path id="textCurve" d="M 10, 50 A 40, 40 0 0, 1 90, 50" fill="none" />
+                </defs>
+                {/* ALTERAÇÃO AQUI: Adicionado 'font-sans' e 'font-extrabold' para um visual mais moderno e forte */}
+                <text className="fill-green-600 font-extrabold uppercase font-sans" fontSize="8.5" letterSpacing="0.05em">
+                    {/* Texto seguindo o caminho */}
+                    <textPath xlinkHref="#textCurve" startOffset="50%" textAnchor="middle">
+                        Contrate Rápido
+                    </textPath>
+                </text>
+            </svg>
+
+            <img 
+            src="/logo.png" 
+            alt="Logo FreeNow" 
+            className="w-56 h-56 object-contain relative z-10" 
+            />
+        </div>
+        {/* --- FIM: Adição do Texto Curvado Moderno --- */}
+
         <h1 className="text-4xl font-bold text-green-600 mb-2">FreeNow</h1>
         <p className="text-gray-500">Contrate rápido, trabalhe livre.</p>
       </div>

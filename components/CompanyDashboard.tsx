@@ -9,12 +9,14 @@ interface Application {
   worker_name: string;
   status: string;
   job_title?: string;
+  worker_photo?: string;
 }
 
 interface ExtendedUser extends User {
   phone?: string;
   cpf?: string;
   description?: string;
+  rating?: number; 
 }
 
 interface CompanyDashboardProps {
@@ -44,11 +46,14 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [selectedCandidate, setSelectedCandidate] = useState<ExtendedUser | null>(null);
   const [showCompanyBio, setShowCompanyBio] = useState(false);
   
-  // ESTADO PARA CONTROLAR A EDIÇÃO (LÁPIS)
   const [isEditing, setIsEditing] = useState(false);
 
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // --- ESTADOS PARA O SISTEMA DE AVALIAÇÃO ---
+  const [editingRating, setEditingRating] = useState<number>(1); // Inicia em 1 por padrão
+  const [isSavingRating, setIsSavingRating] = useState(false);
 
   const [companyProfile, setCompanyProfile] = useState({
     businessName: user.businessName || '',
@@ -73,13 +78,20 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       .slice(0, 18);
   };
 
-  // --- NOVA FUNÇÃO AUXILIAR PARA CORRIGIR A DATA ---
-  // Transforma "2026-01-18" direto para "18/01/2026" sem fuso horário
   const formatDateDisplay = (dateString: string) => {
     if (!dateString) return '';
-    const parts = dateString.split('-'); // [2026, 01, 18]
+    const parts = dateString.split('-'); 
     if (parts.length !== 3) return dateString;
-    return `${parts[2]}/${parts[1]}/${parts[0]}`; // 18/01/2026
+    return `${parts[2]}/${parts[1]}/${parts[0]}`; 
+  };
+
+  const formatPhone = (value: string | undefined) => {
+    if (!value) return 'Não informado';
+    return value
+      .replace(/\D/g, '') 
+      .replace(/(\d{2})(\d)/, '($1) $2') 
+      .replace(/(\d{5})(\d)/, '$1-$2') 
+      .replace(/(-\d{4})\d+?$/, '$1'); 
   };
 
   useEffect(() => {
@@ -97,10 +109,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     fetchCompanyData();
   }, [user.id]);
 
-  // Resetar o modo de edição quando fechar ou abrir o modal
   useEffect(() => {
     if (showCompanyBio) {
-      setIsEditing(false); // Sempre começa bloqueado
+      setIsEditing(false); 
     }
   }, [showCompanyBio]);
 
@@ -127,17 +138,28 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     const companyJobIds = localJobs.map(j => j.id);
     if (companyJobIds.length === 0) return;
 
-    const { data } = await supabase
+    const { data: appsData } = await supabase
       .from('applications')
       .select('*, jobs(role)')
       .in('job_id', companyJobIds)
       .eq('status', 'PENDING');
 
-    if (data) {
-      const formattedApps = data.map((app: any) => ({
-        ...app,
-        job_title: app.jobs?.role
-      }));
+    if (appsData && appsData.length > 0) {
+      const workerIds = appsData.map((app: any) => app.worker_id);
+      
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, photo_url')
+        .in('id', workerIds);
+
+      const formattedApps = appsData.map((app: any) => {
+        const profile = profilesData?.find((p: any) => p.id === app.worker_id);
+        return {
+          ...app,
+          job_title: app.jobs?.role,
+          worker_photo: profile?.photo_url
+        };
+      });
       setApplications(formattedApps);
     } else {
       setApplications([]);
@@ -178,7 +200,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
 
       if (error) throw error;
       alert('Perfil da empresa atualizado com sucesso!');
-      setIsEditing(false); // Bloqueia novamente após salvar
+      setIsEditing(false); 
       setShowCompanyBio(false);
     } catch (error) {
       console.error('Erro ao salvar perfil:', error);
@@ -195,20 +217,17 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setLocalJobs(curr => curr.filter(j => j.id !== jobId));
       onDeleteJob(jobId);
       setSelectedJob(null);
-      // alert('Vaga encerrada e removida com sucesso.'); // Comentado para não spamar alert na limpeza automática
     } catch (error: any) {
       console.error('Erro ao encerrar vaga: ' + error.message);
     }
   };
 
-  // --- FUNÇÃO DE LIMPEZA AUTOMÁTICA ---
   useEffect(() => {
     const cleanExpiredJobs = async () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0); 
 
       for (const job of localJobs) {
-        // Exemplo: job.date = "2026-01-18"
         const jobDateParts = job.date.split('-');
         const jobDate = new Date(
           Number(jobDateParts[0]), 
@@ -216,11 +235,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           Number(jobDateParts[2])
         );
 
-        // Data limite = Data da Vaga + 1 dia (Ex: dia 19)
         const expiryDate = new Date(jobDate);
         expiryDate.setDate(expiryDate.getDate() + 1);
 
-        // Se Hoje (19) >= Data Limite (19), apaga.
         if (today >= expiryDate) {
           console.log(`Limpando vaga vencida: ${job.role} do dia ${job.date}`);
           await handleTerminateJob(job.id);
@@ -276,6 +293,9 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       const { data, error } = await supabase.from('profiles').select('*').eq('id', workerId).single();
       if (error) throw error;
       if (data) {
+        // --- LOGICA DE NOTA: SE FOR 0 OU NULL, ASSUME 1 ---
+        const initialRating = (data.rating === 0 || data.rating === null) ? 1 : data.rating;
+
         setSelectedCandidate({
           id: data.id,
           name: data.name || workerNameFromApp || 'Nome não informado',
@@ -285,25 +305,37 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           address: data.address,
           hasTransport: data.has_transport,
           photoUrl: data.photo_url,
-          rating: data.rating || 0,
+          rating: initialRating, 
           phone: data.phone, 
           cpf: data.cpf,
           municipio: data.municipio,
           bairro: data.bairro
         });
+        setEditingRating(initialRating);
       }
     } catch (err) {
       alert('Não foi possível carregar o perfil.');
     }
   };
 
-  const handleRateUser = async (newRating: number) => {
+  const handleSaveRating = async () => {
     if (!selectedCandidate) return;
-    setSelectedCandidate({ ...selectedCandidate, rating: newRating });
+    setIsSavingRating(true);
     try {
-      await supabase.from('profiles').update({ rating: newRating }).eq('id', selectedCandidate.id);
+        const { error } = await supabase
+            .from('profiles')
+            .update({ rating: editingRating })
+            .eq('id', selectedCandidate.id);
+
+        if (error) throw error;
+
+        setSelectedCandidate(prev => prev ? { ...prev, rating: editingRating } : null);
+        alert('Avaliação salva com sucesso!');
     } catch (error) {
-      console.error('Erro rating', error);
+        console.error('Erro ao salvar avaliação:', error);
+        alert('Erro ao salvar a avaliação.');
+    } finally {
+        setIsSavingRating(false);
     }
   };
 
@@ -341,10 +373,24 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
             <div className="space-y-3">
               {applications.map(app => (
                 <div key={app.id} className="bg-white p-4 rounded-xl border-l-4 border-green-500 shadow-sm flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-gray-800 capitalize">{app.worker_name}</p>
-                    <p className="text-sm text-gray-500">vaga: {app.job_title}</p>
+                  
+                  {/* FOTO E NOME */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-100 overflow-hidden flex-shrink-0">
+                       {app.worker_photo ? (
+                         <img src={app.worker_photo} alt={app.worker_name} className="w-full h-full object-cover" />
+                       ) : (
+                         <div className="w-full h-full flex items-center justify-center text-gray-400">
+                           <i className="fa-solid fa-user"></i>
+                         </div>
+                       )}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-800 capitalize">{app.worker_name}</p>
+                      <p className="text-sm text-gray-500">vaga: {app.job_title}</p>
+                    </div>
                   </div>
+
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleViewProfile(app.worker_id, app.worker_name)}
@@ -388,7 +434,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                 </div>
                 <div className="flex items-center text-xs text-gray-500 mt-1 mb-3">
                   <i className="fa-regular fa-calendar mr-1"></i>
-                  {/* CORREÇÃO AQUI: Usa a formatação direta */}
                   {formatDateDisplay(job.date)} • {job.startTime} às {job.endTime}
                 </div>
                 <div className="flex justify-between items-center mt-3">
@@ -443,7 +488,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <p className="text-xs text-gray-400 uppercase font-bold mb-1">Data</p>
-                      {/* CORREÇÃO AQUI TAMBÉM */}
                       <p className="text-gray-800 text-xl font-bold">{formatDateDisplay(selectedJob.date)}</p>
                     </div>
                 </div>
@@ -512,7 +556,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
              <div className="bg-gray-900 px-6 py-4 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <h3 className="text-white font-bold text-lg">Bio da Empresa</h3>
-                  {/* BOTÃO LÁPIS PARA EDITAR */}
                   {!isEditing && (
                     <button 
                       onClick={() => setIsEditing(true)} 
@@ -539,7 +582,7 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                     <input 
                       type="text" 
                       value={companyProfile.businessName}
-                      disabled={!isEditing} // Bloqueia se não estiver editando
+                      disabled={!isEditing} 
                       onChange={(e) => setCompanyProfile({...companyProfile, businessName: toTitleCase(e.target.value)})}
                       className={`w-full border rounded-lg p-3 mt-1 outline-none ${!isEditing ? 'bg-gray-100 border-transparent text-gray-600' : 'bg-white border-gray-200 focus:ring-2 focus:ring-blue-500'}`}
                     />
@@ -602,7 +645,6 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                   </div>
                 </div>
                 
-                {/* BOTÃO SALVAR SÓ APARECE SE ESTIVER EDITANDO */}
                 {isEditing && (
                   <button 
                     onClick={handleSaveCompanyProfile}
@@ -635,11 +677,44 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
               <h2 className="text-xl font-bold text-gray-800 mb-1 capitalize">{selectedCandidate.name}</h2>
               <p className="text-sm text-gray-500 mb-4">{selectedCandidate.email}</p>
               
-              <div className="flex gap-2 mb-6">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <i key={star} onClick={() => handleRateUser(star)} className={`text-2xl cursor-pointer transition transform hover:scale-110 ${star <= (selectedCandidate.rating || 0) ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-300'}`}></i>
-                ))}
+              {/* --- SISTEMA DE AVALIAÇÃO INTERATIVO --- */}
+              <div className="w-full bg-yellow-50 p-4 rounded-xl border border-yellow-100 mb-6 flex flex-col items-center">
+                  <div className="flex gap-2 mb-2">
+                    {[1, 2, 3, 4, 5].map((starIndex) => {
+                        let starClass = "fa-regular fa-star text-gray-300"; // Vazia
+                        if (editingRating >= starIndex) {
+                            starClass = "fa-solid fa-star text-yellow-400"; // Cheia
+                        } else if (editingRating >= starIndex - 0.5) {
+                            starClass = "fa-solid fa-star-half-stroke text-yellow-400"; // Meia
+                        }
+                        return <i key={starIndex} className={`${starClass} text-2xl`}></i>
+                    })}
+                  </div>
+                  
+                  <div className="w-full flex items-center gap-3">
+                      <span className="font-bold text-gray-600 w-8 text-center">{editingRating.toFixed(1)}</span>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="5" 
+                        step="0.5" 
+                        value={editingRating}
+                        onChange={(e) => setEditingRating(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                      />
+                  </div>
+
+                  <button 
+                    onClick={handleSaveRating}
+                    disabled={isSavingRating}
+                    className="mt-3 bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                  >
+                    {isSavingRating ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-floppy-disk"></i>}
+                    Salvar Nota
+                  </button>
               </div>
+              {/* -------------------------------------- */}
+
               <div className="w-full space-y-3">
                 <div className="flex items-center p-3 bg-gray-50 rounded-xl">
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3"><i className="fa-solid fa-cake-candles text-sm"></i></div>
@@ -650,12 +725,12 @@ const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
                   <div><p className="text-xs text-gray-500">Mora em</p><p className="font-semibold text-gray-800 capitalize">{selectedCandidate.municipio ? `${selectedCandidate.municipio} - ${selectedCandidate.bairro}` : (selectedCandidate.address || 'Não informado')}</p></div>
                 </div>
                 <div className="flex items-center p-3 bg-gray-50 rounded-xl">
-                   <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3"><i className="fa-brands fa-whatsapp text-sm"></i></div>
-                   <div><p className="text-xs text-gray-500">Contato / WhatsApp</p><p className="font-semibold text-gray-800">{selectedCandidate.phone || 'Não informado'}</p></div>
+                    <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3"><i className="fa-brands fa-whatsapp text-sm"></i></div>
+                    <div><p className="text-xs text-gray-500">Contato / WhatsApp</p><p className="font-semibold text-gray-800">{formatPhone(selectedCandidate.phone)}</p></div>
                 </div>
                 <div className="flex items-center p-3 bg-gray-50 rounded-xl">
-                   <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mr-3"><i className="fa-solid fa-id-card text-sm"></i></div>
-                   <div><p className="text-xs text-gray-500">CPF</p><p className="font-semibold text-gray-800">{selectedCandidate.cpf || 'Não informado'}</p></div>
+                    <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mr-3"><i className="fa-solid fa-id-card text-sm"></i></div>
+                    <div><p className="text-xs text-gray-500">CPF</p><p className="font-semibold text-gray-800">{selectedCandidate.cpf || 'Não informado'}</p></div>
                 </div>
                 <div className="flex items-center p-3 bg-gray-50 rounded-xl">
                   <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3"><i className="fa-solid fa-car text-sm"></i></div>
