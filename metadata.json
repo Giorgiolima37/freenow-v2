@@ -1,7 +1,7 @@
 {
-  "name": "FreeNow - Vagas Temporárias",
-  "description": "Uma plataforma mobile-first para empresários contratarem freelancers por diária de forma rápida e segura.",
+  "name": "Floripa Boat Tours",
+  "description": "Uma plataforma moderna de pré-reserva para passeios de barco na Lagoa da Conceição, Florianópolis. Inclui agendamento de grupos e um editor de fotos inteligente alimentado por IA.",
   "requestFramePermissions": [
-    "geolocation"
+    "camera"
   ]
 }

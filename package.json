@@ -1,5 +1,5 @@
 {
-  "name": "freenow---vagas-temporárias",
+  "name": "floripa-boat-tours",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,10 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.90.1",
-    "html2canvas": "^1.4.1",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "@google/genai": "^1.38.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
