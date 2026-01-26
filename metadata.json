@@ -1,6 +1,6 @@
 {
-  "name": "Floripa Boat Tours",
-  "description": "Uma plataforma moderna de pré-reserva para passeios de barco na Lagoa da Conceição, Florianópolis. Inclui agendamento de grupos e um editor de fotos inteligente alimentado por IA.",
+  "name": "Lady Manoela - Passeios de Scuna",
+  "description": "Sistema de reserva para passeios de barco e editor de imagens com IA para personalizar sua experiência.",
   "requestFramePermissions": [
     "camera"
   ]

@@ -1,26 +1,22 @@
 
-export interface Tour {
-  id: string;
-  name: string;
-  duration: string;
-  price: number;
-  description: string;
-  itinerary: string[];
-  image: string;
+export enum TourType {
+  LAGOON = 'Passeio na Lagoa',
+  NATURAL_POOLS = 'Piscinas Naturais',
+  PRIVATE = 'Passeio Privativo'
 }
 
-export interface ReservationFormData {
+export interface BookingFormData {
   fullName: string;
   phone: string;
   date: string;
   peopleCount: number;
-  tourId: string;
+  tourType: TourType;
 }
 
-export enum Section {
-  HOME = 'home',
-  TOURS = 'tours',
-  INFO = 'info',
-  RESERVATION = 'reservation',
-  EDITOR = 'editor'
+export interface GeminiPart {
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
+  text?: string;
 }

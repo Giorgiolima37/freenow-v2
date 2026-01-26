@@ -1,8 +1,13 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-export async function editTourImage(base64ImageData: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string | null> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+export async function editImage(base64Image: string, mimeType: string, prompt: string): Promise<string | null> {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API Key not found");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   try {
     const response = await ai.models.generateContent({
@@ -11,12 +16,12 @@ export async function editTourImage(base64ImageData: string, prompt: string, mim
         parts: [
           {
             inlineData: {
-              data: base64ImageData.split(',')[1], // Remove the data:image/jpeg;base64, prefix
+              data: base64Image.split(',')[1] || base64Image,
               mimeType: mimeType,
             },
           },
           {
-            text: `Por favor, edite esta foto de passeio de barco de acordo com o seguinte pedido: "${prompt}". Mantenha um visual profissional e natural de fotografia de turismo em Florianópolis.`,
+            text: `Edit this image based on the following instruction: ${prompt}. Return only the edited image.`,
           },
         ],
       },
@@ -24,7 +29,7 @@ export async function editTourImage(base64ImageData: string, prompt: string, mim
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:${mimeType};base64,${part.inlineData.data}`;
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
     return null;
