@@ -32,15 +32,14 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
         await onUpdate(updatedList);
       } else {
         // Criação de novo produto
-        const newProduct = {
-          ...editingProduct,
-          id: Math.random().toString(36).substr(2, 9),
-          stock: Number(editingProduct.stock || 0),
-          purchasePrice: Number(editingProduct.purchasePrice || 0),
-          salePrice: Number(editingProduct.salePrice || 0),
-          minStock: Number(editingProduct.minStock || 0),
-          expiryDate: editingProduct.expiryDate || new Date().toISOString().split('T')[0],
-        } as Product;
+        // No arquivo Inventory.tsx, dentro da função handleSave:
+const newProduct = {
+  ...editingProduct,
+  // Substitua crypto.randomUUID() por esta linha:
+  id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+  stock: Number(editingProduct.stock || 0),
+  // ... restante do código
+} as Product;
         
         await onUpdate([...products, newProduct]);
       }

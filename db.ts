@@ -13,16 +13,35 @@ export const db = {
       console.error('Erro ao buscar produtos:', error.message);
       return [];
     }
-    return data as Product[];
+    
+    // Mapeia os nomes do banco de volta para o formato do seu código (Frontend)
+    return (data || []).map(p => ({
+      ...p,
+      salePrice: p.price,
+      expiryDate: p.expiration_date,
+      stock: p.stock_quantity
+    })) as Product[];
   },
 
   saveProducts: async (products: Product[]) => {
-    // No Supabase, o ideal é salvar item por item ou usar o upsert
+    // Mapeia o formato do código para as colunas reais da sua tabela no Supabase
+    const productsToSave = products.map(p => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.salePrice),
+      category: p.category,
+      stock_quantity: Number(p.stock),
+      expiration_date: p.expiryDate
+    }));
+
     const { error } = await supabase
       .from('products')
-      .upsert(products);
+      .upsert(productsToSave);
 
-    if (error) console.error('Erro ao salvar produtos:', error.message);
+    if (error) {
+      console.error('Erro ao salvar produtos no Supabase:', error.message);
+      throw error;
+    }
   },
 
   // --- VENDAS ---
@@ -32,44 +51,34 @@ export const db = {
       .select('*')
       .order('timestamp', { ascending: false });
 
-    if (error) {
-      console.error('Erro ao buscar vendas:', error.message);
-      return [];
-    }
+    if (error) return [];
     return data as Sale[];
   },
 
   saveSales: async (sales: Sale[]) => {
-    // Salva/Atualiza a lista de vendas
     const { error } = await supabase
       .from('sales')
       .upsert(sales);
 
-    if (error) console.error('Erro ao salvar vendas:', error.message);
+    if (error) {
+      console.error('Erro ao salvar vendas:', error.message);
+      throw error;
+    }
   },
 
-  // --- CLIENTES ---
+  // --- CLIENTES E DESPESAS (MANTIDOS) ---
   getCustomers: async () => {
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*');
-    
-    if (error) return [];
-    return data as Customer[];
+    const { data } = await supabase.from('customers').select('*');
+    return data || [];
   },
 
   saveCustomers: async (customers: Customer[]) => {
     await supabase.from('customers').upsert(customers);
   },
 
-  // --- DESPESAS ---
   getExpenses: async () => {
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*');
-    
-    if (error) return [];
-    return data as Expense[];
+    const { data } = await supabase.from('expenses').select('*');
+    return data || [];
   },
 
   saveExpenses: async (expenses: Expense[]) => {
