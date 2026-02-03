@@ -1,6 +1,8 @@
-
 import React from 'react';
 import { Sale } from '../types';
+
+// Importação do Logo para o Cupom
+import logoImg from '../logo.png';
 
 interface Props {
   sale: Sale;
@@ -9,11 +11,17 @@ interface Props {
 const ThermalReceipt: React.FC<Props> = ({ sale }) => {
   return (
     <div className="p-2 text-[12px] font-mono leading-tight bg-white text-black w-[58mm]">
+      {/* Cabeçalho com Logo e Nome Real */}
       <div className="text-center mb-4">
-        <h2 className="text-lg font-bold">MERCADOFÁCIL PRO</h2>
-        <p>Rua do Comércio, 123 - Centro</p>
-        <p>(11) 98888-7777</p>
-        <p>CNPJ: 00.000.000/0001-00</p>
+        <img 
+          src={logoImg} 
+          alt="Logo" 
+          className="w-32 mx-auto mb-2 grayscale" 
+          style={{ filter: 'contrast(1.5) brightness(0.8)' }} 
+        />
+        <h2 className="text-lg font-bold uppercase">MERCADO MORRETES</h2>
+        <p>Agradecemos a sua preferência</p>
+        <p className="text-[10px]">CNPJ: 00.000.000/0001-00</p>
       </div>
 
       <div className="border-t border-dashed border-black my-2"></div>
@@ -29,17 +37,17 @@ const ThermalReceipt: React.FC<Props> = ({ sale }) => {
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-black">
-            <th className="font-normal">ITEM</th>
-            <th className="text-center font-normal">QTD</th>
-            <th className="text-right font-normal">TOTAL</th>
+            <th className="font-normal text-[10px]">ITEM</th>
+            <th className="text-center font-normal text-[10px]">QTD</th>
+            <th className="text-right font-normal text-[10px]">TOTAL</th>
           </tr>
         </thead>
         <tbody>
           {sale.items.map((item, idx) => (
             <tr key={idx}>
-              <td className="py-1">{item.name.slice(0, 15)}</td>
-              <td className="py-1 text-center">{item.quantity}</td>
-              <td className="py-1 text-right">{item.total.toFixed(2)}</td>
+              <td className="py-1 text-[10px]">{item.name.slice(0, 18)}</td>
+              <td className="py-1 text-center text-[10px]">{item.quantity}</td>
+              <td className="py-1 text-right text-[10px]">{item.total.toFixed(2)}</td>
             </tr>
           ))}
         </tbody>
@@ -54,18 +62,18 @@ const ThermalReceipt: React.FC<Props> = ({ sale }) => {
       
       <div className="flex justify-between text-[10px] mt-1">
         <span>FORMA PAGTO:</span>
-        <span>{sale.paymentMethod}</span>
+        <span className="uppercase">{sale.paymentMethod}</span>
       </div>
 
       <div className="border-t border-dashed border-black my-4"></div>
 
       <div className="text-center italic">
-        <p>Obrigado pela preferência!</p>
+        <p className="font-bold">Obrigado pela preferência!</p>
         <p>Volte sempre.</p>
       </div>
       
       <div className="mt-4 text-center text-[8px]">
-        MercadoFácil Pro v1.0
+        Mercado Morretes v1.0.0 Pro
       </div>
     </div>
   );
