@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Package, 
   ShoppingCart, 
   Users, 
   DollarSign, 
-  AlertTriangle, 
   FileText,
   Clock,
   Menu,
@@ -36,32 +35,42 @@ const App: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
-  // Load Data
+  // Carregar dados inicialmente do Supabase
   useEffect(() => {
-    setProducts(db.getProducts());
-    setSales(db.getSales());
-    setCustomers(db.getCustomers());
-    setExpenses(db.getExpenses());
+    const loadInitialData = async () => {
+      const loadedProducts = await db.getProducts();
+      const loadedSales = await db.getSales();
+      const loadedCustomers = await db.getCustomers();
+      const loadedExpenses = await db.getExpenses();
+      
+      setProducts(loadedProducts);
+      setSales(loadedSales);
+      setCustomers(loadedCustomers);
+      setExpenses(loadedExpenses);
+    };
+
+    loadInitialData();
   }, []);
 
-  const updateProducts = (newProducts: Product[]) => {
+  // FUNÇÕES DE ATUALIZAÇÃO AJUSTADAS PARA ASYNC
+  const updateProducts = async (newProducts: Product[]) => {
     setProducts(newProducts);
-    db.saveProducts(newProducts);
+    await db.saveProducts(newProducts);
   };
 
-  const updateSales = (newSales: Sale[]) => {
+  const updateSales = async (newSales: Sale[]) => {
     setSales(newSales);
-    db.saveSales(newSales);
+    await db.saveSales(newSales);
   };
 
-  const updateCustomers = (newCustomers: Customer[]) => {
+  const updateCustomers = async (newCustomers: Customer[]) => {
     setCustomers(newCustomers);
-    db.saveCustomers(newCustomers);
+    await db.saveCustomers(newCustomers);
   };
 
-  const updateExpenses = (newExpenses: Expense[]) => {
+  const updateExpenses = async (newExpenses: Expense[]) => {
     setExpenses(newExpenses);
-    db.saveExpenses(newExpenses);
+    await db.saveExpenses(newExpenses);
   };
 
   const menuItems = [
@@ -76,7 +85,6 @@ const App: React.FC = () => {
 
   const handlePrint = (sale: Sale) => {
     setLastSale(sale);
-    // Timeout to ensure DOM is updated before print
     setTimeout(() => {
       window.print();
     }, 100);
@@ -86,7 +94,6 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-slate-100">
       {/* Sidebar */}
       <aside className={`bg-white border-r border-slate-200 text-slate-600 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        {/* Header da Sidebar com altura aumentada para o logo grande */}
         <div className="p-2 flex flex-col items-center justify-center border-b border-slate-100 min-h-[140px] relative">
           {isSidebarOpen ? (
             <div className="w-full px-2 flex justify-center">
@@ -97,14 +104,9 @@ const App: React.FC = () => {
               />
             </div>
           ) : (
-            <div className="h-10" /> // Espaçador quando fechado
+            <div className="h-10" />
           )}
-          
-          {/* Botão de fechar/abrir posicionado para não atrapalhar o logo */}
-          <button 
-            onClick={() => setSidebarOpen(!isSidebarOpen)} 
-            className="absolute top-2 right-2 p-1 hover:bg-slate-100 rounded text-slate-400"
-          >
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="absolute top-2 right-2 p-1 hover:bg-slate-100 rounded text-slate-400">
             {isSidebarOpen ? <X size={18} /> : <Menu size={20} />}
           </button>
         </div>
@@ -148,13 +150,13 @@ const App: React.FC = () => {
             />
           )}
           {view === 'customers' && <Customers customers={customers} sales={sales} onUpdate={updateCustomers} />}
-          {view === 'finance' && <Finance sales={sales} expenses={expenses} onUpdate={updateExpenses} />}
+          {view === 'finance' && <Finance sales={sales} expenses={expenses} onUpdateExpenses={updateExpenses} />}
           {view === 'reports' && <Reports products={products} sales={sales} expenses={expenses} customers={customers} />}
           {view === 'expiration' && <Expiration products={products} onUpdate={updateProducts} />}
         </div>
       </main>
 
-      {/* Thermal Receipt Hidden Portal */}
+      {/* Thermal Receipt */}
       <div id="thermal-receipt" className="hidden print:block">
         {lastSale && <ThermalReceipt sale={lastSale} />}
       </div>

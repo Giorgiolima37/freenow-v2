@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 /* Added Package to imports */
 import { Search, Plus, Edit, Trash2, Camera, Wand2, Package } from 'lucide-react';
@@ -21,36 +20,57 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
     p.barcode.includes(searchTerm)
   );
 
-  const handleSave = (e: React.FormEvent) => {
+  // Ajustado para ser assíncrono e garantir a execução
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
 
-    if (editingProduct.id) {
-      onUpdate(products.map(p => p.id === editingProduct.id ? editingProduct as Product : p));
-    } else {
-      const newProduct = {
-        ...editingProduct,
-        id: crypto.randomUUID(),
-        stock: Number(editingProduct.stock || 0),
-        purchasePrice: Number(editingProduct.purchasePrice || 0),
-        salePrice: Number(editingProduct.salePrice || 0),
-        minStock: Number(editingProduct.minStock || 0),
-      } as Product;
-      onUpdate([...products, newProduct]);
+    try {
+      if (editingProduct.id) {
+        // Atualização de produto existente
+        const updatedList = products.map(p => p.id === editingProduct.id ? editingProduct as Product : p);
+        await onUpdate(updatedList);
+      } else {
+        // Criação de novo produto
+        const newProduct = {
+          ...editingProduct,
+          id: Math.random().toString(36).substr(2, 9),
+          stock: Number(editingProduct.stock || 0),
+          purchasePrice: Number(editingProduct.purchasePrice || 0),
+          salePrice: Number(editingProduct.salePrice || 0),
+          minStock: Number(editingProduct.minStock || 0),
+          expiryDate: editingProduct.expiryDate || new Date().toISOString().split('T')[0],
+        } as Product;
+        
+        await onUpdate([...products, newProduct]);
+      }
+      
+      // Limpa o estado e fecha o modal apenas após o sucesso
+      setEditingProduct(null);
+    } catch (error) {
+      console.error("Erro ao salvar produto:", error);
+      alert("Erro ao conectar com o banco de dados. Verifique sua conexão.");
     }
-    setEditingProduct(null);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este produto?')) {
-      onUpdate(products.filter(p => p.id !== id));
+      try {
+        await onUpdate(products.filter(p => p.id !== id));
+      } catch (error) {
+        alert("Erro ao excluir o produto.");
+      }
     }
   };
 
-  const handleImageEdited = (newUrl: string) => {
+  const handleImageEdited = async (newUrl: string) => {
     if (activeImageProduct) {
-      onUpdate(products.map(p => p.id === activeImageProduct.id ? { ...p, imageUrl: newUrl } : p));
-      setActiveImageProduct(null);
+      try {
+        await onUpdate(products.map(p => p.id === activeImageProduct.id ? { ...p, imageUrl: newUrl } : p));
+        setActiveImageProduct(null);
+      } catch (error) {
+        alert("Erro ao atualizar a imagem.");
+      }
     }
   };
 
@@ -99,7 +119,6 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
                         {p.imageUrl ? (
                           <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
                         ) : (
-                          /* Fixed: Added missing Package icon import */
                           <Package className="text-slate-400" size={20} />
                         )}
                       </div>
@@ -111,13 +130,13 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{p.category}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${p.stock <= p.minStock ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${p.stock <= (p.minStock || 0) ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                       {p.stock} un
                     </span>
                   </td>
                   <td className="px-4 py-3 font-medium">R$ {p.salePrice.toFixed(2)}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(p.expiryDate).toLocaleDateString('pt-BR')}
+                    {p.expiryDate ? new Date(p.expiryDate).toLocaleDateString('pt-BR') : 'N/A'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end space-x-2">
