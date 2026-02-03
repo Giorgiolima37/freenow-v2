@@ -1,176 +1,172 @@
 
 import React, { useState, useRef } from 'react';
-import { editImage } from '../services/geminiService';
+import { GoogleGenAI } from "@google/genai";
+import { Camera, X, Wand2, Loader2, Sparkles } from 'lucide-react';
+import { Product } from '../types';
 
-const ImageEditor: React.FC = () => {
-  const [image, setImage] = useState<string | null>(null);
-  const [mimeType, setMimeType] = useState<string>('');
+interface Props {
+  product: Product;
+  onSave: (url: string) => void;
+  onClose: () => void;
+}
+
+const ImageEditor: React.FC<Props> = ({ product, onSave, onClose }) => {
   const [prompt, setPrompt] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [editedImage, setEditedImage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentImageUrl, setCurrentImageUrl] = useState(product.imageUrl || 'https://picsum.photos/400/400');
+  const [error, setError] = useState('');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setMimeType(file.type);
       const reader = new FileReader();
-      reader.onload = () => {
-        setImage(reader.result as string);
-        setEditedImage(null);
-        setError(null);
+      reader.onload = (event) => {
+        setCurrentImageUrl(event.target?.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleEdit = async () => {
-    if (!image || !prompt) return;
+  const handleAiEdit = async () => {
+    if (!prompt) return;
+    setIsProcessing(true);
+    setError('');
 
-    setLoading(true);
-    setError(null);
     try {
-      const result = await editImage(image, mimeType, prompt);
-      if (result) {
-        setEditedImage(result);
-      } else {
-        setError("Não foi possível processar a edição. Tente novamente.");
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      // Convert current image to base64 data
+      const base64Data = currentImageUrl.split(',')[1];
+      const mimeType = currentImageUrl.match(/data:(.*?);/)?.[1] || 'image/png';
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+              },
+            },
+            {
+              text: `Edite esta imagem de produto (${product.name}) conforme o pedido: ${prompt}. Retorne apenas a imagem editada.`,
+            },
+          ],
+        },
+      });
+
+      let foundImage = false;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          const newBase64 = part.inlineData.data;
+          setCurrentImageUrl(`data:image/png;base64,${newBase64}`);
+          foundImage = true;
+          break;
+        }
+      }
+
+      if (!foundImage) {
+        throw new Error('A IA não retornou uma imagem editada.');
       }
     } catch (err: any) {
-      setError("Ocorreu um erro ao editar a imagem. Verifique sua chave de API ou tente um prompt diferente.");
       console.error(err);
+      setError('Erro ao processar imagem: ' + err.message);
     } finally {
-      setLoading(false);
+      setIsProcessing(false);
     }
   };
 
-  const downloadImage = () => {
-    if (!editedImage) return;
-    const link = document.createElement('a');
-    link.href = editedImage;
-    link.download = `lady-manoela-photo-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="mb-4">
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">Personalize sua Experiência</h3>
-        <p className="text-gray-600">
-          Envie uma foto e use o poder da IA do <strong>Gemini 2.5</strong> para adicionar filtros, elementos marítimos ou o que desejar!
-        </p>
-      </div>
-
-      {!image ? (
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-gray-300 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-maritime-blue transition-colors bg-gray-50"
-        >
-          <div className="w-16 h-16 bg-sky-100 text-maritime-blue rounded-full flex items-center justify-center mb-4">
-            <i className="fa-solid fa-cloud-arrow-up text-2xl"></i>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col md:flex-row h-[600px]">
+        {/* Left: Preview */}
+        <div className="flex-1 bg-slate-900 flex flex-col relative group">
+          <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
+            <img src={currentImageUrl} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform" />
           </div>
-          <p className="text-gray-600 font-medium text-center">Clique ou arraste uma foto aqui para começar</p>
-          <p className="text-gray-400 text-xs mt-2">JPG, PNG ou WEBP</p>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            className="hidden" 
-            accept="image/*" 
-          />
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="relative group overflow-hidden rounded-xl border border-gray-200">
-            <img 
-              src={editedImage || image} 
-              alt="Preview" 
-              className="w-full max-h-80 object-contain bg-black/5" 
-            />
-            <button 
-              onClick={() => { setImage(null); setEditedImage(null); }}
-              className="absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-            >
-              <i className="fa-solid fa-xmark"></i>
-            </button>
-            {loading && (
-              <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-maritime-blue mb-4"></div>
-                <p className="text-maritime-blue font-bold animate-pulse">O Gemini está editando sua foto...</p>
-              </div>
-            )}
-          </div>
-
-          {!editedImage ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">O que deseja fazer?</label>
-                <textarea
-                  rows={2}
-                  placeholder="Ex: Adicione um pôr do sol tropical, coloque um golfinho pulando ao fundo, adicione um filtro vintage marítimo..."
-                  className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-sky-500 focus:border-sky-500 outline-none resize-none"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={handleEdit}
-                disabled={loading || !prompt}
-                className={`w-full font-bold py-4 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 ${
-                  loading || !prompt 
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-maritime-blue hover:bg-sky-900 text-white'
-                }`}
-              >
-                <i className="fa-solid fa-wand-magic-sparkles"></i>
-                <span>Gerar Edição com IA</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={downloadImage}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2"
-              >
-                <i className="fa-solid fa-download"></i>
-                <span>Baixar Foto</span>
-              </button>
-              <button
-                onClick={() => setEditedImage(null)}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-xl shadow transition-all flex items-center justify-center"
-              >
-                Refazer
-              </button>
-            </div>
-          )}
           
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg flex items-start space-x-2">
-              <i className="fa-solid fa-circle-exclamation mt-0.5"></i>
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-      )}
+          <div className="absolute top-4 left-4">
+            <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded font-bold uppercase tracking-wider">Preview</span>
+          </div>
 
-      <div className="mt-6 pt-6 border-t border-gray-100">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-          <i className="fa-solid fa-lightbulb text-yellow-500 mr-2"></i>
-          Sugestões de prompts:
-        </h4>
-        <div className="flex flex-wrap gap-2">
-          {['Pôr do sol cinematográfico', 'Filtro analógico anos 90', 'Céu azul cristalino', 'Vibe tropical verão'].map((sug) => (
-            <button
-              key={sug}
-              onClick={() => setPrompt(sug)}
-              className="text-xs bg-sky-50 text-sky-700 px-3 py-1.5 rounded-full border border-sky-100 hover:bg-sky-100 transition-colors"
+          <div className="p-4 bg-black/40 backdrop-blur-md flex justify-center space-x-2">
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg flex items-center transition"
             >
-              {sug}
+              <Camera size={18} className="mr-2" /> Upload
             </button>
-          ))}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept="image/*" 
+              onChange={handleFileUpload} 
+            />
+          </div>
+        </div>
+
+        {/* Right: Controls */}
+        <div className="w-full md:w-80 p-6 flex flex-col border-l">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-bold flex items-center">
+              <Sparkles className="text-blue-600 mr-2" size={24} /> IA Editor
+            </h3>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-4 overflow-auto">
+            <p className="text-sm text-slate-500">Use comandos de voz ou texto para editar a foto do produto usando Gemini 2.5 Flash Image.</p>
+            
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4">
+              <p className="text-xs font-bold text-blue-800 mb-1">Dicas:</p>
+              <ul className="text-xs text-blue-700 space-y-1 list-disc ml-4">
+                <li>"Remova o fundo"</li>
+                <li>"Adicione sombra"</li>
+                <li>"Aumente o brilho"</li>
+                <li>"Torne as cores mais vibrantes"</li>
+              </ul>
+            </div>
+
+            <textarea 
+              className="w-full h-32 p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+              placeholder="Descreva a alteração..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            ></textarea>
+
+            {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded">{error}</p>}
+
+            <button 
+              onClick={handleAiEdit}
+              disabled={isProcessing || !prompt}
+              className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold flex items-center justify-center hover:bg-slate-800 disabled:bg-slate-200 transition"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="animate-spin mr-2" size={20} /> Processando...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="mr-2" size={20} /> Aplicar Magia
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="pt-6 border-t mt-auto">
+            <button 
+              onClick={() => onSave(currentImageUrl)}
+              className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200"
+            >
+              Salvar Alterações
+            </button>
+          </div>
         </div>
       </div>
     </div>

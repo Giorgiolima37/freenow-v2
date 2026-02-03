@@ -1,39 +1,141 @@
 
-import React, { useState } from 'react';
-import BookingForm from './components/BookingForm';
-import ImageEditor from './components/ImageEditor';
-import Header from './components/Header';
-import Footer from './components/Footer';
-
-type View = 'booking' | 'editor';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  ShoppingCart, 
+  Users, 
+  DollarSign, 
+  AlertTriangle, 
+  FileText,
+  Clock,
+  Menu,
+  X
+} from 'lucide-react';
+import { AppView, Product, Sale, Customer, Expense } from './types';
+import { db } from './db';
+import Dashboard from './components/Dashboard';
+import Inventory from './components/Inventory';
+import POS from './components/POS';
+import Customers from './components/Customers';
+import Finance from './components/Finance';
+import Reports from './components/Reports';
+import Expiration from './components/Expiration';
+import ThermalReceipt from './components/ThermalReceipt';
 
 const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<View>('booking');
+  const [view, setView] = useState<AppView>('dashboard');
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [lastSale, setLastSale] = useState<Sale | null>(null);
+
+  // Core Data State
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  // Load Data
+  useEffect(() => {
+    setProducts(db.getProducts());
+    setSales(db.getSales());
+    setCustomers(db.getCustomers());
+    setExpenses(db.getExpenses());
+  }, []);
+
+  const updateProducts = (newProducts: Product[]) => {
+    setProducts(newProducts);
+    db.saveProducts(newProducts);
+  };
+
+  const updateSales = (newSales: Sale[]) => {
+    setSales(newSales);
+    db.saveSales(newSales);
+  };
+
+  const updateCustomers = (newCustomers: Customer[]) => {
+    setCustomers(newCustomers);
+    db.saveCustomers(newCustomers);
+  };
+
+  const updateExpenses = (newExpenses: Expense[]) => {
+    setExpenses(newExpenses);
+    db.saveExpenses(newExpenses);
+  };
+
+  const menuItems = [
+    { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+    { id: 'pos', label: 'PDV / Vendas', icon: ShoppingCart },
+    { id: 'inventory', label: 'Estoque', icon: Package },
+    { id: 'expiration', label: 'Validade', icon: Clock },
+    { id: 'customers', label: 'Clientes', icon: Users },
+    { id: 'finance', label: 'Financeiro', icon: DollarSign },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
+  ];
+
+  const handlePrint = (sale: Sale) => {
+    setLastSale(sale);
+    // Timeout to ensure DOM is updated before print
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header activeView={activeView} setView={setActiveView} />
-      
-      <main className="flex-grow container mx-auto px-4 py-8 max-w-2xl">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="bg-maritime-blue p-6 text-white text-center">
-            <h2 className="text-2xl font-bold uppercase tracking-wider">
-              LADY MANOELA
-            </h2>
-            <p className="text-sky-100 mt-1 opacity-90">Passeios de Scuna</p>
-          </div>
-          
-          <div className="p-6 md:p-10">
-            {activeView === 'booking' ? (
-              <BookingForm />
-            ) : (
-              <ImageEditor />
-            )}
-          </div>
+    <div className="flex h-screen bg-slate-100">
+      {/* Sidebar */}
+      <aside className={`bg-slate-900 text-white transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+        <div className="p-4 flex items-center justify-between border-b border-slate-800">
+          {isSidebarOpen && <h1 className="font-bold text-xl text-blue-400">MercadoFácil</h1>}
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded">
+            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+        
+        <nav className="flex-1 mt-4">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id as AppView)}
+              className={`w-full flex items-center p-4 transition-colors hover:bg-slate-800 ${view === item.id ? 'bg-blue-600' : ''}`}
+            >
+              <item.icon size={22} className={isSidebarOpen ? 'mr-4' : 'mx-auto'} />
+              {isSidebarOpen && <span>{item.label}</span>}
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-slate-800">
+          <p className={`text-xs text-slate-400 ${isSidebarOpen ? '' : 'text-center'}`}>v1.0.0 Pro</p>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto p-4 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          {view === 'dashboard' && <Dashboard products={products} sales={sales} expenses={expenses} />}
+          {view === 'inventory' && <Inventory products={products} onUpdate={updateProducts} />}
+          {view === 'pos' && (
+            <POS 
+              products={products} 
+              onUpdateProducts={updateProducts}
+              sales={sales}
+              onUpdateSales={updateSales}
+              customers={customers}
+              onUpdateCustomers={updateCustomers}
+              onPrint={handlePrint}
+            />
+          )}
+          {view === 'customers' && <Customers customers={customers} sales={sales} onUpdate={updateCustomers} />}
+          {view === 'finance' && <Finance sales={sales} expenses={expenses} onUpdateExpenses={updateExpenses} />}
+          {view === 'reports' && <Reports products={products} sales={sales} expenses={expenses} customers={customers} />}
+          {view === 'expiration' && <Expiration products={products} onUpdate={updateProducts} />}
         </div>
       </main>
 
-      <Footer />
+      {/* Thermal Receipt Hidden Portal */}
+      <div id="thermal-receipt" className="hidden print:block">
+        {lastSale && <ThermalReceipt sale={lastSale} />}
+      </div>
     </div>
   );
 };

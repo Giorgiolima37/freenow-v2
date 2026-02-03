@@ -1,6 +1,6 @@
 {
-  "name": "Lady Manoela - Passeios de Scuna",
-  "description": "Sistema de reserva para passeios de barco e editor de imagens com IA para personalizar sua experiência.",
+  "name": "MercadoFácil Pro - Sistema de Gestão e PDV",
+  "description": "Sistema completo para mercados e mercearias com PDV, controle de estoque, validade, fluxo de caixa e impressão térmica.",
   "requestFramePermissions": [
     "camera"
   ]
