@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, 
@@ -22,6 +21,9 @@ import Finance from './components/Finance';
 import Reports from './components/Reports';
 import Expiration from './components/Expiration';
 import ThermalReceipt from './components/ThermalReceipt';
+
+// Importação do Logo
+import logoImg from './logo.png';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('dashboard');
@@ -83,11 +85,27 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-slate-100">
       {/* Sidebar */}
-      <aside className={`bg-slate-900 text-white transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        <div className="p-4 flex items-center justify-between border-b border-slate-800">
-          {isSidebarOpen && <h1 className="font-bold text-xl text-blue-400">MercadoFácil</h1>}
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded">
-            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+      <aside className={`bg-white border-r border-slate-200 text-slate-600 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+        {/* Header da Sidebar com altura aumentada para o logo grande */}
+        <div className="p-2 flex flex-col items-center justify-center border-b border-slate-100 min-h-[140px] relative">
+          {isSidebarOpen ? (
+            <div className="w-full px-2 flex justify-center">
+              <img 
+                src={logoImg} 
+                alt="Mercado Morretes" 
+                className="h-28 w-auto object-contain transition-all duration-300 transform scale-110" 
+              />
+            </div>
+          ) : (
+            <div className="h-10" /> // Espaçador quando fechado
+          )}
+          
+          {/* Botão de fechar/abrir posicionado para não atrapalhar o logo */}
+          <button 
+            onClick={() => setSidebarOpen(!isSidebarOpen)} 
+            className="absolute top-2 right-2 p-1 hover:bg-slate-100 rounded text-slate-400"
+          >
+            {isSidebarOpen ? <X size={18} /> : <Menu size={20} />}
           </button>
         </div>
         
@@ -96,16 +114,20 @@ const App: React.FC = () => {
             <button
               key={item.id}
               onClick={() => setView(item.id as AppView)}
-              className={`w-full flex items-center p-4 transition-colors hover:bg-slate-800 ${view === item.id ? 'bg-blue-600' : ''}`}
+              className={`w-full flex items-center p-4 transition-colors ${
+                view === item.id 
+                ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600' 
+                : 'hover:bg-slate-50 text-slate-500'
+              }`}
             >
               <item.icon size={22} className={isSidebarOpen ? 'mr-4' : 'mx-auto'} />
-              {isSidebarOpen && <span>{item.label}</span>}
+              {isSidebarOpen && <span className="font-medium">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
-          <p className={`text-xs text-slate-400 ${isSidebarOpen ? '' : 'text-center'}`}>v1.0.0 Pro</p>
+        <div className="p-4 border-t border-slate-100">
+          <p className={`text-xs text-slate-400 font-semibold ${isSidebarOpen ? '' : 'text-center'}`}>v1.0.0 Pro</p>
         </div>
       </aside>
 
@@ -126,7 +148,7 @@ const App: React.FC = () => {
             />
           )}
           {view === 'customers' && <Customers customers={customers} sales={sales} onUpdate={updateCustomers} />}
-          {view === 'finance' && <Finance sales={sales} expenses={expenses} onUpdateExpenses={updateExpenses} />}
+          {view === 'finance' && <Finance sales={sales} expenses={expenses} onUpdate={updateExpenses} />}
           {view === 'reports' && <Reports products={products} sales={sales} expenses={expenses} customers={customers} />}
           {view === 'expiration' && <Expiration products={products} onUpdate={updateProducts} />}
         </div>
