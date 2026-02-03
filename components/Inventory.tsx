@@ -20,7 +20,7 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
     p.barcode.includes(searchTerm)
   );
 
-  // Ajustado para ser assíncrono e garantir a execução
+  // Ajustado para ser assíncrono e com gerador de ID compatível com HTTP/IP Local
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -32,23 +32,25 @@ const Inventory: React.FC<Props> = ({ products, onUpdate }) => {
         await onUpdate(updatedList);
       } else {
         // Criação de novo produto
-        // No arquivo Inventory.tsx, dentro da função handleSave:
-const newProduct = {
-  ...editingProduct,
-  // Substitua crypto.randomUUID() por esta linha:
-  id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-  stock: Number(editingProduct.stock || 0),
-  // ... restante do código
-} as Product;
+        const newProduct = {
+          ...editingProduct,
+          // Gerador de ID manual para evitar erro crypto.randomUUID em rede local
+          id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+          stock: Number(editingProduct.stock || 0),
+          purchasePrice: Number(editingProduct.purchasePrice || 0),
+          salePrice: Number(editingProduct.salePrice || 0),
+          minStock: Number(editingProduct.minStock || 0),
+          expiryDate: editingProduct.expiryDate || new Date().toISOString().split('T')[0],
+        } as Product;
         
         await onUpdate([...products, newProduct]);
       }
       
-      // Limpa o estado e fecha o modal apenas após o sucesso
+      // Limpa o estado e fecha o modal apenas após o sucesso no banco
       setEditingProduct(null);
     } catch (error) {
       console.error("Erro ao salvar produto:", error);
-      alert("Erro ao conectar com o banco de dados. Verifique sua conexão.");
+      alert("Erro ao conectar com o banco de dados. Verifique sua conexão e as permissões do Supabase.");
     }
   };
 
