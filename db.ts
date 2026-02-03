@@ -1,23 +1,78 @@
-
 import { Product, Sale, Customer, Expense } from './types';
-
-const KEYS = {
-  PRODUCTS: 'mf_products',
-  SALES: 'mf_sales',
-  CUSTOMERS: 'mf_customers',
-  EXPENSES: 'mf_expenses'
-};
+import { supabase } from './supabaseClient';
 
 export const db = {
-  getProducts: (): Product[] => JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]'),
-  saveProducts: (data: Product[]) => localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(data)),
-  
-  getSales: (): Sale[] => JSON.parse(localStorage.getItem(KEYS.SALES) || '[]'),
-  saveSales: (data: Sale[]) => localStorage.setItem(KEYS.SALES, JSON.stringify(data)),
-  
-  getCustomers: (): Customer[] => JSON.parse(localStorage.getItem(KEYS.CUSTOMERS) || '[]'),
-  saveCustomers: (data: Customer[]) => localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(data)),
-  
-  getExpenses: (): Expense[] => JSON.parse(localStorage.getItem(KEYS.EXPENSES) || '[]'),
-  saveExpenses: (data: Expense[]) => localStorage.setItem(KEYS.EXPENSES, JSON.stringify(data)),
+  // --- PRODUTOS ---
+  getProducts: async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao buscar produtos:', error.message);
+      return [];
+    }
+    return data as Product[];
+  },
+
+  saveProducts: async (products: Product[]) => {
+    // No Supabase, o ideal é salvar item por item ou usar o upsert
+    const { error } = await supabase
+      .from('products')
+      .upsert(products);
+
+    if (error) console.error('Erro ao salvar produtos:', error.message);
+  },
+
+  // --- VENDAS ---
+  getSales: async () => {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao buscar vendas:', error.message);
+      return [];
+    }
+    return data as Sale[];
+  },
+
+  saveSales: async (sales: Sale[]) => {
+    // Salva/Atualiza a lista de vendas
+    const { error } = await supabase
+      .from('sales')
+      .upsert(sales);
+
+    if (error) console.error('Erro ao salvar vendas:', error.message);
+  },
+
+  // --- CLIENTES ---
+  getCustomers: async () => {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*');
+    
+    if (error) return [];
+    return data as Customer[];
+  },
+
+  saveCustomers: async (customers: Customer[]) => {
+    await supabase.from('customers').upsert(customers);
+  },
+
+  // --- DESPESAS ---
+  getExpenses: async () => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*');
+    
+    if (error) return [];
+    return data as Expense[];
+  },
+
+  saveExpenses: async (expenses: Expense[]) => {
+    await supabase.from('expenses').upsert(expenses);
+  }
 };
